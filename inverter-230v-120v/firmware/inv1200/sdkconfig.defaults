@@ -1,0 +1,4 @@
+# keep MCPWM control functions callable from the 40 kHz ISR
+CONFIG_MCPWM_ISR_IRAM_SAFE=y
+CONFIG_MCPWM_CTRL_FUNC_IN_IRAM=y
+CONFIG_FREERTOS_HZ=1000

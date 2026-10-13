@@ -1,0 +1,79 @@
+Qty,References,Value,Footprint,MPN / suggestion,Notes
+1,BR1,GBU15J,Diode_Bridge_Vishay_GBU,Vishay GBU15J or Diodes GBU1506 (15 A 600 V) - on heatsink,
+1,C1,1uF X2 275VAC,C_Rect_L31.5mm_W13.0mm_P27.50mm_MKS4,KEMET R46KR410000M1M / WIMA MKP X2,
+1,C2,47uF 25V,CP_Radial_D6.3mm_P2.50mm,,
+1,C3,100uF 10V,CP_Radial_D6.3mm_P2.50mm,,
+1,C4,330nF,C_0805_2012Metric,,
+15,C5 C12 C15 C21 C24 C28 C30 C32 C34 C36 C37 C39 C41 C42 C43,100nF,C_0805_2012Metric,,
+2,C6 C38,10uF,C_0805_2012Metric,,
+1,C7,22uF,C_1206_3216Metric,,
+1,C8,1uF 630VDC,C_Rect_L26.5mm_W8.5mm_P22.50mm_MKS4,WIMA MKP4 1uF 630VDC,PFC input HF cap
+3,C9 C13 C35,1nF,C_0805_2012Metric,,tune w/ TI calculator
+3,C10 C25 C29,100pF,C_0805_2012Metric,,
+1,C11,2.2uF,C_0805_2012Metric,,
+3,C14 C23 C27,10uF 25V,C_1206_3216Metric,,
+3,C16 C17 C18,390uF 450V,CP_Radial_D35.0mm_P10.00mm_3pin_SnapIn,Nichicon LGU2W391MELB / Rubycon 450MXK390 (35x45),
+2,C19 C20,1uF 630VDC,C_Rect_L26.5mm_W8.5mm_P22.50mm_MKS4,WIMA MKP4 1uF 630V,leg A decoupling; leg B decoupling
+2,C22 C26,1uF 50V,C_1206_3216Metric,,bootstrap
+1,C31,3.3uF X2 275VAC,C_Rect_L31.5mm_W17.0mm_P27.50mm_MKS4,KEMET R46 3.3uF X2 / WIMA MKP X2,
+1,C33,10nF,C_0805_2012Metric,,
+1,C40,1uF,C_0805_2012Metric,,
+1,C44,100nF 630VDC,C_Rect_L18.0mm_W6.0mm_P15.00mm_FKS3_FKP3,WIMA FKP3/MKP 100nF 630V,"PFC D2-Q1 HF loop cap, place at D2/Q1"
+1,D1,1N5408,D_DO-201AD_P15.24mm_Horizontal,,Inrush bypass around L1/D2
+1,D2,C6D10065A,TO-220-2_Vertical,Wolfspeed C6D10065A SiC 650 V 10 A - on heatsink,
+2,D3 D8,1N4148W,D_SOD-123,,
+1,D4,RED BUS LIVE,LED_0805_2012Metric,,lit while bus > ~30 V
+2,D5 D6,ES1J,D_SMA,,bootstrap 600 V fast
+1,D7,GREEN STATUS,LED_0805_2012Metric,,
+1,F1,T10A 250V,Fuseholder_Cylinder-6.3x32mm_Schurter_0031-8002_Horizontal_Open,Schurter 0031.8002 holder + 6.3x32 T10A ceramic,
+1,F2,T12.5A 250V,Fuseholder_Cylinder-6.3x32mm_Schurter_0031-8002_Horizontal_Open,Schurter 0031.8002 holder + 6.3x32 T12.5A,
+4,H1 H2 H3 H4,M3,MountingHole_3.2mm_M3,,
+1,J1,AC IN 230V,TerminalBlock_MetzConnect_Type067_RT01902HDWC_1x02_P10.00mm_Horizontal,Metz RT01902HDWC 10 mm pitch,"Feed from IEC inlet filter e.g. Schaffner FN9260/FN9264-10 (10 A). PE goes inlet->chassis->outlet, not via PCB"
+1,J2,AC OUT 120V,TerminalBlock_MetzConnect_Type067_RT01902HDWC_1x02_P10.00mm_Horizontal,Metz RT01902HDWC 10 mm pitch,NOT isolated from mains - neither pin is neutral/earth
+1,J3,PROG (ISOLATED),PinHeader_1x06_P2.54mm_Vertical,,"1 GND, 2 3V3, 3 to adapter RX, 4 RTS, 5 DTR, 6 from adapter TX (order matches U10 pins)"
+1,J4,HEATSINK NTC,JST_XH_B2B-XH-A_1x02_P2.50mm_Vertical,"10k B3950 NTC glued to heatsink, insulated",
+1,J5,FAN 12V,JST_XH_B2B-XH-A_1x02_P2.50mm_Vertical,,
+1,K1,G2RL-1-E 12VDC,Relay_SPDT_Omron_G2RL-1-E,Omron G2RL-1-E DC12 (16 A),
+1,L1,450uH 15A,L_Toroid_Vertical_L67.6mm_W36.1mm_P31.80mm_Vishay_TJ9,"2x Magnetics 0077439A7 Kool Mu 60u stacked, ~70 T 1.6 mm (or custom)",
+2,L2 L3,150uH 20A,L_Toroid_Vertical_L67.6mm_W36.1mm_P31.80mm_Vishay_TJ9,Kool Mu 0077439A7 ~45 T 1.8 mm (Isat >= 20 A),
+1,PS1,IRM-10-15,Converter_ACDC_MeanWell_IRM-10-xx_THT,Mean Well IRM-10-15,
+1,PS2,IRM-05-5,Converter_ACDC_MeanWell_IRM-05-xx_THT,Mean Well IRM-05-5,
+1,Q1,IPW65R045C7,TO-247-3_Vertical,Infineon IPW65R045C7 - on heatsink,
+4,Q2 Q3 Q9 Q10,MMBT3904,SOT-23,,pulls VSENSE low = PFC off
+4,Q5 Q6 Q7 Q8,C3M0060065D,TO-247-3_Vertical,Wolfspeed C3M0060065D SiC - on heatsink,
+1,Q11,AO3400A,SOT-23,,
+2,R1 R2,470k,R_2512_6332Metric,,X-cap discharge
+6,R3 R36 R48 R53 R55 R60,1k,R_0805_2012Metric,,0.60 V = -19 A; 4.40 V = +19 A; MCU enable; LM393 can override low
+16,R4 R6 R15 R28 R29 R33 R34 R37 R49 R50 R51 R56 R57 R58 R59 R61,10k,R_0805_2012Metric,,PFC off by default; bridge off by default; with 10k NTC on heatsink
+1,R5,4R7,R_0805_2012Metric,,
+1,R7,220R,R_0805_2012Metric,,
+1,R8,33k2,R_0805_2012Metric,,"~65 kHz, check datasheet eq."
+2,R9 R25,22k,R_0805_2012Metric,,2.19 V @ 400 V; tune w/ TI calculator
+1,R10,1M2,R_2512_6332Metric,,
+2,R11 R12,1M2,R_1206_3216Metric,,
+1,R13,45k3,R_0805_2012Metric,,0.1%; sets 402 V bus
+1,R14,4k7,R_0805_2012Metric,,
+5,R16 R26 R27 R31 R32,10R,R_0805_2012Metric,,
+4,R17 R18 R19 R20,27k 1W,R_2512_6332Metric,,bleeder
+3,R21 R38 R42,1M,R_2512_6332Metric,,
+9,R22 R23 R24 R39 R40 R41 R43 R44 R45,1M,R_1206_3216Metric,,
+3,R30 R35 R62,100R,R_0805_2012Metric,,
+2,R46 R47,28k 0.1%,R_0805_2012Metric,,
+1,R52,20k,R_0805_2012Metric,,
+1,R54,6k34,R_0805_2012Metric,,
+1,R63,100k,R_0805_2012Metric,,
+1,RS1,40m 2W,R_2512_6332Metric,Vishay WSL2512R0400 (or Bourns CRA2512),PFC shunt (2 in parallel = 20 mOhm)
+1,RS2,40m 2W,R_2512_6332Metric,Vishay WSL2512R0400,
+1,RV1,275VAC,RV_Disc_D15.5mm_W5.9mm_P7.5mm,TDK S14K275,
+1,SW1,RESET,SW_SPST_TL3342,,
+1,SW2,BOOT,SW_SPST_TL3342,,
+1,TH1,5R 8A,RV_Disc_D15.5mm_W5.9mm_P7.5mm,"TDK B57237S0509M000 (S237, 5 ohm, 8 A)",
+1,U1,L7812,TO-220-3_Vertical,ST L7812CV,
+1,U2,AMS1117-3.3,SOT-223-3_TabPin2,,
+1,U3,UCC28180,SOIC-8_3.9x4.9mm_P1.27mm,TI UCC28180DR,
+2,U4 U5,IR21844S,SOIC-14_3.9x8.7mm_P1.27mm,Infineon IR21844STRPBF,DT tied to VSS = minimum (~0.4 us) dead time; HV pins isolated on one side
+1,U6,ACS724LLCTR-20AB,SOIC-8_3.9x4.9mm_P1.27mm,Allegro ACS724LLCTR-20AB-T,pin 6 = BW_SEL tied GND
+1,U7,TLV9062IDR,SOIC-8_3.9x4.9mm_P1.27mm,TI TLV9062IDR,
+1,U8,LM393,SOIC-8_3.9x4.9mm_P1.27mm,TI LM393DR,
+1,U9,ESP32-WROOM-32E-N4,ESP32-WROOM-32D,Espressif ESP32-WROOM-32E-N4,
+1,U10,Si8641ED-B-IS,SOIC-16W_7.5x10.3mm_P1.27mm,"Skyworks Si8641ED-B-IS (5 kVrms, default-high outputs)",
