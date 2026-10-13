@@ -3,12 +3,13 @@
 from __future__ import annotations
 
 import json
+import os
 import time
 from pathlib import Path
 
-from .data import CACHE_DIR
-
-FILE = CACHE_DIR.parent / "my_watchlist.json"
+# The desktop installer points STOCKPICKER_DATA at ~/.local/share/munger-lens/data
+# so your list survives upgrades; when run from the repo it lives next to app.py.
+FILE = Path(os.environ.get("STOCKPICKER_DATA", Path(__file__).resolve().parent.parent)) / "my_watchlist.json"
 
 
 def load(path: Path = FILE) -> dict[str, dict]:

@@ -1,0 +1,4 @@
+# Native desktop app (stockpicker.gui). install.sh prefers the distro's PyQt6
+# (Arch/CachyOS: python-pyqt6) so the app picks up the real Breeze style;
+# PyQt6 is only pip-installed when no system copy exists.
+pyqtgraph>=0.13

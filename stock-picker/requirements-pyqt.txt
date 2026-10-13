@@ -1,0 +1,2 @@
+# Fallback when the distro doesn't provide PyQt6 (install.sh decides).
+PyQt6>=6.5
