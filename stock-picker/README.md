@@ -4,13 +4,34 @@ A local Streamlit app that runs each company through several independent researc
 
 > **This is a research aid, not advice.** It works from free Yahoo Finance data, which has gaps and errors, and from simple, transparent models. Use it to decide *what* to research, then read the filings.
 
-## Quick start
+## Install as a Linux desktop app
+
+```bash
+cd stock-picker
+./install.sh
+```
+
+Then open **Munger Lens** from your app menu, or run `munger-lens` in a terminal. The app opens in its own window, not a browser tab, and closing the window shuts it down. The installer doesn't need sudo. It puts everything under your home directory:
+
+| Path | What's there |
+|---|---|
+| `~/.local/share/munger-lens/app`, `venv` | The app and its private Python environment. Both are replaced when you upgrade. |
+| `~/.local/share/munger-lens/data` | Your watchlist and the launcher log (`launcher.log`). |
+| `~/.local/share/munger-lens/env` | Settings. Put `export ANTHROPIC_API_KEY=...` here to enable Claude memos. |
+| `~/.cache/munger-lens` | The market-data cache. |
+
+- **Upgrade:** pull the latest code and run `./install.sh` again. Your watchlist and settings are kept.
+- **Remove:** run `./uninstall.sh`. Add `--purge` to also delete your data.
+
+**Needs:** Python 3.10+ with venv (`sudo apt install python3-venv` on Debian/Ubuntu). The window uses Qt WebEngine, which needs a few system libraries. Most desktops already have them; the installer warns you if any look missing. Without them, the app opens in your browser instead and stops 10 minutes after you close the tab.
+
+## Run from source (development)
 
 ```bash
 cd stock-picker
 python -m venv .venv && source .venv/bin/activate
 pip install -r requirements.txt
-streamlit run app.py
+streamlit run app.py            # opens in the browser
 ```
 
 To get optional Claude-written memos, export `ANTHROPIC_API_KEY` before you launch the app.
@@ -64,6 +85,8 @@ stockpicker/data.py         yfinance loader, disk cache, statement helpers
 stockpicker/research/       one module per lens + munger.py synthesis
 stockpicker/screener.py     universe screening and watchlist rankings
 stockpicker/ai_memo.py      optional Claude memo (streaming, web search)
+desktop/launcher.py         native-window launcher (pywebview + Qt) with browser fallback
+install.sh / uninstall.sh   per-user desktop install (app menu entry, icon, launcher)
 tests/                      offline tests on synthetic yfinance-shaped data
 ```
 

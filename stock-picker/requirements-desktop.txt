@@ -1,0 +1,2 @@
+# Native window for the Linux desktop app (installed by install.sh)
+pywebview[qt]>=5.0

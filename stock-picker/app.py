@@ -77,7 +77,13 @@ with st.sidebar:
     )
     st.divider()
     has_key = bool(os.environ.get("ANTHROPIC_API_KEY") or os.environ.get("ANTHROPIC_AUTH_TOKEN"))
-    st.caption(("🤖 Claude memo: enabled" if has_key else "🤖 Claude memo: set ANTHROPIC_API_KEY to enable") )
+    if has_key:
+        st.caption("🤖 Claude memo: enabled")
+    elif os.environ.get("STOCKPICKER_DATA"):  # installed desktop app: settings live in the env file
+        env_file = os.path.join(os.path.dirname(os.environ["STOCKPICKER_DATA"]), "env")
+        st.caption(f"🤖 Claude memo: add ANTHROPIC_API_KEY to `{env_file}` and restart to enable")
+    else:
+        st.caption("🤖 Claude memo: set ANTHROPIC_API_KEY to enable")
     st.caption("Data: Yahoo Finance via yfinance (cached 12h). Free data has gaps and errors — verify in filings.")
 
 
