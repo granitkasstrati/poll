@@ -1,0 +1,591 @@
+<title>Task Bay</title>
+<link rel="preconnect" href="https://fonts.googleapis.com">
+<link rel="preconnect" href="https://fonts.gstatic.com" crossorigin>
+<link rel="stylesheet" href="https://fonts.googleapis.com/css2?family=Chakra+Petch:wght@500;600&family=Instrument+Sans:wght@400;500;600&family=JetBrains+Mono:wght@400;500&display=swap">
+<style>
+/* Layout: instrument panel. Capacity readout up top, ongoing slots (left) beside parking bays (right), completed log below. Single dark theme by design. */
+:root {
+  color-scheme: dark;
+  --bg: #0A0D13;
+  --panel: #0F141C;
+  --raise: #161D29;
+  --line: #1E2734;
+  --line-strong: #2C3848;
+  --grid: rgba(143, 180, 255, 0.035);
+  --fg: #DCE4F2;
+  --dim: #7D8AA0;
+  --faint: #4C586C;
+  --accent: #8FB4FF;
+  --accent-ink: #0A0D13;
+  --accent-line: rgba(143, 180, 255, 0.45);
+  --accent-glow: rgba(143, 180, 255, 0.35);
+  --accent-soft: rgba(143, 180, 255, 0.16);
+  --amber: #E3B35E;
+  --ok: #71D1A8;
+  --danger: #EE7F7F;
+  --f-display: "Chakra Petch", "Segoe UI", system-ui, sans-serif;
+  --f-body: "Instrument Sans", system-ui, -apple-system, "Segoe UI", sans-serif;
+  --f-mono: "JetBrains Mono", ui-monospace, SFMono-Regular, Menlo, Consolas, monospace;
+}
+*, *::before, *::after { box-sizing: border-box; }
+html, body { background: var(--bg); color: var(--fg); }
+body {
+  font-family: var(--f-body);
+  font-size: 15px;
+  line-height: 1.5;
+  min-height: 100%;
+  background-image:
+    linear-gradient(var(--grid) 1px, transparent 1px),
+    linear-gradient(90deg, var(--grid) 1px, transparent 1px);
+  background-size: 48px 48px;
+}
+.wrap {
+  max-width: 1120px;
+  margin: 0 auto;
+  padding-inline: 20px;
+  padding-block: 28px 64px;
+  display: grid;
+  gap: 26px;
+}
+@media (max-width: 480px) { .wrap { padding-inline: 16px; } }
+
+/* Header */
+.top {
+  display: flex; flex-wrap: wrap; align-items: center; justify-content: space-between;
+  gap: 16px 28px; padding-bottom: 20px; border-bottom: 1px solid var(--line);
+}
+.brand { display: flex; align-items: center; gap: 14px; }
+.mark { width: 13px; height: 13px; border: 1.5px solid var(--accent); transform: rotate(45deg); }
+h1 {
+  font-family: var(--f-display); font-weight: 600; font-size: 21px;
+  letter-spacing: 0.2em; text-transform: uppercase; margin: 0;
+}
+.meters { display: flex; flex-wrap: wrap; gap: 12px 26px; }
+.meter { display: flex; align-items: center; gap: 10px; font-family: var(--f-mono); font-size: 12px; color: var(--dim); font-variant-numeric: tabular-nums; }
+.meter .lbl { font-family: var(--f-display); font-size: 11px; letter-spacing: 0.14em; text-transform: uppercase; }
+.cells { display: flex; gap: 3px; }
+.cells i { width: 14px; height: 6px; background: var(--line-strong); }
+.cells i.on { background: var(--accent); }
+.meter.amber .cells i.on { background: var(--amber); }
+.clock { font-family: var(--f-mono); font-size: 12px; color: var(--dim); letter-spacing: 0.06em; font-variant-numeric: tabular-nums; }
+
+/* Add form */
+.add { display: flex; flex-wrap: wrap; gap: 10px; }
+.add input[type="text"] {
+  flex: 1 1 260px; min-width: 0;
+  background: var(--panel); color: var(--fg);
+  border: 1px solid var(--line-strong); border-radius: 2px;
+  font: inherit; padding: 11px 14px;
+}
+.add input[type="text"]::placeholder { color: var(--faint); }
+.add input[type="text"]:focus { outline: none; border-color: var(--accent); box-shadow: 0 0 0 3px var(--accent-soft); }
+.seg { display: flex; border: 1px solid var(--line-strong); border-radius: 2px; }
+.seg label { position: relative; display: block; }
+.seg label + label { border-left: 1px solid var(--line-strong); }
+.seg input { position: absolute; inset: 0; opacity: 0; margin: 0; }
+.seg span {
+  display: block; padding: 12px 16px; cursor: pointer;
+  font-family: var(--f-display); font-size: 11.5px; font-weight: 600; letter-spacing: 0.14em; text-transform: uppercase;
+  color: var(--dim);
+}
+.seg input:checked + span { background: var(--raise); color: var(--fg); }
+.seg input:focus-visible + span { outline: 2px solid var(--accent); outline-offset: -2px; }
+.seg input:disabled + span { opacity: 0.35; cursor: not-allowed; }
+.hint { margin: -14px 0 0; min-height: 1.5em; color: var(--dim); font-size: 13px; }
+
+/* Buttons */
+.btn {
+  font-family: var(--f-display); font-size: 11.5px; font-weight: 600; letter-spacing: 0.13em; text-transform: uppercase;
+  padding: 8px 12px; border: 1px solid var(--line-strong); border-radius: 2px;
+  background: transparent; color: var(--fg); cursor: pointer;
+  transition: border-color 0.15s, background-color 0.15s, color 0.15s;
+}
+.btn:hover:not(:disabled) { border-color: var(--accent); color: var(--accent); }
+.btn:focus-visible { outline: 2px solid var(--accent); outline-offset: 2px; }
+.btn:disabled { opacity: 0.35; cursor: not-allowed; }
+.btn.primary { background: var(--accent); border-color: var(--accent); color: var(--accent-ink); padding-inline: 18px; }
+.btn.primary:hover:not(:disabled) { background: transparent; color: var(--accent); }
+.btn.play { min-width: 76px; border-color: var(--accent-line); color: var(--accent); }
+.btn.play.on { background: var(--accent); color: var(--accent-ink); }
+.btn.go { border-color: var(--ok); color: var(--ok); }
+.btn.go:hover:not(:disabled) { background: var(--ok); color: var(--accent-ink); border-color: var(--ok); }
+.btn.quiet { border-color: transparent; color: var(--dim); }
+.btn.danger:hover:not(:disabled) { border-color: var(--danger); color: var(--danger); }
+.btn.confirm, .btn.confirm:hover:not(:disabled) { border-color: var(--danger); color: var(--danger); }
+
+/* Lanes */
+.grid { display: grid; grid-template-columns: minmax(0, 1.45fr) minmax(0, 1fr); gap: 28px; align-items: start; }
+@media (max-width: 880px) { .grid { grid-template-columns: minmax(0, 1fr); } }
+.lane-head { display: flex; flex-wrap: wrap; align-items: baseline; gap: 4px 14px; margin-bottom: 12px; }
+h2 { font-family: var(--f-display); font-size: 13px; font-weight: 600; letter-spacing: 0.2em; text-transform: uppercase; margin: 0; }
+.parked h2 { color: var(--amber); }
+.sub { color: var(--dim); font-size: 13px; }
+.slots { list-style: none; margin: 0; padding: 0; display: grid; gap: 10px; }
+
+.card { position: relative; background: var(--panel); border: 1px solid var(--line); padding: 16px 18px; display: grid; gap: 12px; }
+.card::before {
+  content: ""; position: absolute; top: -1px; left: -1px; width: 10px; height: 10px;
+  border-top: 1px solid var(--accent); border-left: 1px solid var(--accent); opacity: 0.7;
+}
+.parked .card::before { border-color: var(--amber); }
+.card.empty {
+  background: transparent; border-style: dashed; color: var(--faint);
+  font-family: var(--f-mono); font-size: 12px; padding: 13px 18px; letter-spacing: 0.04em;
+}
+.card.empty::before { display: none; }
+.card.loading { color: var(--dim); }
+
+.card.act { grid-template-columns: minmax(0, 1fr) auto; align-items: start; }
+.card.running { border-color: var(--accent-line); box-shadow: 0 0 0 1px var(--accent-line), 0 0 32px -10px var(--accent-glow); }
+.c-title { font-size: 16px; font-weight: 500; overflow-wrap: anywhere; }
+.tag {
+  font-family: var(--f-mono); font-size: 10px; letter-spacing: 0.08em; text-transform: uppercase;
+  color: var(--dim); border: 1px solid var(--line-strong); padding: 1px 6px; margin-left: 8px; vertical-align: 2px; white-space: nowrap;
+}
+.dates { display: flex; flex-wrap: wrap; gap: 4px 20px; margin: 6px 0 0; }
+.dates div { display: flex; align-items: baseline; gap: 7px; }
+.dates dt { color: var(--dim); font-family: var(--f-display); font-size: 10.5px; letter-spacing: 0.12em; text-transform: uppercase; }
+.dates dd { margin: 0; font-family: var(--f-mono); font-size: 12px; font-variant-numeric: tabular-nums; }
+.dates dd.none { color: var(--faint); }
+.timer { text-align: right; }
+.timer .t { display: block; font-family: var(--f-mono); font-size: 28px; font-weight: 500; line-height: 1.05; font-variant-numeric: tabular-nums; color: var(--dim); }
+.timer .k { font-family: var(--f-display); font-size: 10.5px; letter-spacing: 0.14em; text-transform: uppercase; color: var(--faint); }
+.running .timer .t { color: var(--accent); }
+.running .timer .k { color: var(--accent); }
+.live { display: inline-block; width: 6px; height: 6px; border-radius: 50%; background: var(--accent); margin-right: 7px; vertical-align: 1px; animation: pulse 1.6s ease-in-out infinite; }
+@keyframes pulse { 50% { opacity: 0.2; } }
+.c-actions { display: flex; flex-wrap: wrap; gap: 8px; }
+.card.act .c-actions { grid-column: 1 / -1; }
+.c-actions .spacer { flex: 1; }
+@media (max-width: 520px) {
+  .card.act { grid-template-columns: minmax(0, 1fr); }
+  .timer { text-align: left; }
+  .timer .t { font-size: 24px; }
+}
+
+.bar { height: 3px; background: var(--line-strong); position: relative; overflow: hidden; }
+.bar i { position: absolute; top: 0; bottom: 0; left: 0; background: var(--amber); }
+.bar.ready i { background: var(--ok); }
+.p-row { display: flex; flex-wrap: wrap; align-items: center; justify-content: space-between; gap: 10px; }
+.status { font-family: var(--f-mono); font-size: 12px; color: var(--amber); font-variant-numeric: tabular-nums; }
+.status.ready { color: var(--ok); }
+
+/* Completed log */
+.table-wrap { overflow-x: auto; border: 1px solid var(--line); background: var(--panel); }
+table { width: 100%; border-collapse: collapse; font-size: 14px; min-width: 620px; }
+th {
+  text-align: left; font-family: var(--f-display); font-size: 10.5px; font-weight: 600;
+  letter-spacing: 0.14em; text-transform: uppercase; color: var(--dim);
+  padding: 10px 14px; border-bottom: 1px solid var(--line);
+}
+td { padding: 11px 14px; border-bottom: 1px solid var(--line); vertical-align: middle; }
+tbody tr:last-child td { border-bottom: 0; }
+td.num { font-family: var(--f-mono); font-size: 12.5px; font-variant-numeric: tabular-nums; white-space: nowrap; }
+td.title { overflow-wrap: anywhere; }
+td.act { text-align: right; width: 1%; white-space: nowrap; }
+.done-mark { color: var(--ok); margin-right: 8px; font-family: var(--f-mono); }
+.empty-row td { color: var(--faint); font-family: var(--f-mono); font-size: 12px; padding: 16px 14px; }
+
+.foot { display: flex; flex-wrap: wrap; align-items: center; justify-content: space-between; gap: 10px; color: var(--faint); font-family: var(--f-mono); font-size: 11.5px; }
+
+.toast {
+  position: fixed; left: 50%; bottom: calc(20px + env(safe-area-inset-bottom, 0px)); transform: translateX(-50%);
+  max-width: min(520px, calc(100% - 32px)); background: var(--raise); color: var(--fg);
+  border: 1px solid var(--line-strong); padding: 10px 14px; font-size: 13.5px; border-radius: 2px;
+  box-shadow: 0 10px 30px -10px rgba(0, 0, 0, 0.6);
+}
+
+@media (prefers-reduced-motion: reduce) {
+  .live { animation: none; }
+  .btn { transition: none; }
+}
+</style>
+
+<div class="wrap">
+  <header class="top">
+    <div class="brand"><span class="mark" aria-hidden="true"></span><h1>Task Bay</h1></div>
+    <div class="meters">
+      <div class="meter" id="m-active"><span class="lbl">Ongoing</span><span class="cells"></span><span class="num"></span></div>
+      <div class="meter amber" id="m-parked"><span class="lbl">Parked</span><span class="cells"></span><span class="num"></span></div>
+    </div>
+    <div class="clock" id="clock" aria-hidden="true"></div>
+  </header>
+
+  <form id="add" class="add" autocomplete="off">
+    <input type="text" id="add-title" maxlength="140" placeholder="New task" aria-label="Task name">
+    <div class="seg" role="radiogroup" aria-label="Where to put it">
+      <label><input type="radio" name="lane" id="lane-active" value="active" checked><span>Ongoing</span></label>
+      <label><input type="radio" name="lane" id="lane-parked" value="parked"><span>Park it</span></label>
+    </div>
+    <button type="submit" class="btn primary" id="add-btn">Add task</button>
+  </form>
+  <p class="hint" id="add-hint"></p>
+
+  <main class="grid">
+    <section class="lane" aria-labelledby="h-active">
+      <div class="lane-head">
+        <h2 id="h-active">Ongoing</h2>
+        <span class="sub">Up to 5. One timer runs at a time.</span>
+      </div>
+      <ol class="slots" id="active-list"></ol>
+    </section>
+    <section class="lane parked" aria-labelledby="h-parked">
+      <div class="lane-head">
+        <h2 id="h-parked">Parking lot</h2>
+        <span class="sub">Up to 5. A task stays here at least 7 days before it can move up.</span>
+      </div>
+      <ol class="slots" id="parked-list"></ol>
+    </section>
+  </main>
+
+  <section aria-labelledby="h-done">
+    <div class="lane-head">
+      <h2 id="h-done">Completed</h2>
+      <span class="sub" id="done-sum"></span>
+    </div>
+    <div class="table-wrap">
+      <table>
+        <thead><tr><th>Task</th><th>Started</th><th>Ended</th><th>Time logged</th><th><span hidden>Actions</span></th></tr></thead>
+        <tbody id="done-list"></tbody>
+      </table>
+    </div>
+  </section>
+
+  <footer class="foot">
+    <span id="mode"></span>
+    <button type="button" class="btn quiet" id="clear-examples" hidden>Remove example tasks</button>
+  </footer>
+</div>
+<div class="toast" id="toast" role="status" aria-live="polite" hidden></div>
+
+<script>
+(() => {
+  const MAX = 5;
+  const WEEK = 7 * 24 * 60 * 60 * 1000;
+  const LOCAL_KEY = "taskbay.v1";
+
+  const $ = (id) => document.getElementById(id);
+  const el = {
+    activeList: $("active-list"), parkedList: $("parked-list"), doneList: $("done-list"),
+    doneSum: $("done-sum"), clock: $("clock"), mode: $("mode"), toast: $("toast"),
+    form: $("add"), title: $("add-title"), laneActive: $("lane-active"), laneParked: $("lane-parked"),
+    addBtn: $("add-btn"), hint: $("add-hint"), clearEx: $("clear-examples"),
+    mActive: $("m-active"), mParked: $("m-parked"),
+  };
+
+  let tasks = new Map();
+  let loaded = false;
+  let store = null;
+  let pendingDelete = null;
+  let pendingTimer = 0;
+
+  /* ---------- formatting ---------- */
+  const pad = (n) => String(n).padStart(2, "0");
+  const MONTHS = ["Jan","Feb","Mar","Apr","May","Jun","Jul","Aug","Sep","Oct","Nov","Dec"];
+  const DAYS = ["Sun","Mon","Tue","Wed","Thu","Fri","Sat"];
+  function fmt(ts) {
+    if (!ts) return "";
+    const d = new Date(ts);
+    return `${pad(d.getDate())} ${MONTHS[d.getMonth()]} ${d.getFullYear()} · ${pad(d.getHours())}:${pad(d.getMinutes())}`;
+  }
+  function dur(ms) {
+    const s = Math.max(0, Math.floor(ms / 1000));
+    return `${pad(Math.floor(s / 3600))}:${pad(Math.floor(s / 60) % 60)}:${pad(s % 60)}`;
+  }
+  function left(ms) {
+    const s = Math.max(0, Math.ceil(ms / 1000));
+    const d = Math.floor(s / 86400), h = Math.floor(s / 3600) % 24, m = Math.floor(s / 60) % 60, sec = s % 60;
+    if (d > 0) return `${d}d ${pad(h)}h ${pad(m)}m`;
+    if (h > 0) return `${h}h ${pad(m)}m ${pad(sec)}s`;
+    return `${m}m ${pad(sec)}s`;
+  }
+  const esc = (s) => String(s).replace(/[&<>"']/g, (c) => ({ "&": "&amp;", "<": "&lt;", ">": "&gt;", '"': "&quot;", "'": "&#39;" }[c]));
+  const elapsed = (t, now) => (t.elapsedMs || 0) + (t.runningSince ? now - t.runningSince : 0);
+  const newId = () => "t" + Date.now().toString(36) + Math.random().toString(36).slice(2, 7);
+
+  /* ---------- storage ---------- */
+  const localStore = {
+    label: "Saved in this browser only",
+    init(onChange) {
+      this.onChange = onChange;
+      let arr = [];
+      try { arr = JSON.parse(localStorage.getItem(LOCAL_KEY) || "[]"); } catch (e) { arr = []; }
+      if (Array.isArray(arr)) arr.forEach((t) => t && t.id && tasks.set(t.id, t));
+      onChange();
+    },
+    persist() { try { localStorage.setItem(LOCAL_KEY, JSON.stringify([...tasks.values()])); } catch (e) {} },
+    async put(t) { tasks.set(t.id, t); this.persist(); this.onChange(); },
+    async remove(id) { tasks.delete(id); this.persist(); this.onChange(); },
+  };
+
+  function remoteStore(db) {
+    const col = db.collection("tasks");
+    let onChange = () => {};
+    const fail = () => toast("That change didn't save. Check your connection and try again.");
+    return {
+      label: "Synced to your account",
+      init(cb) {
+        onChange = cb;
+        col.onSnapshot(
+          (snap) => {
+            tasks = new Map(snap.docs.map((d) => [d.id, { ...d.data(), id: d.id }]));
+            onChange();
+          },
+          () => toast("Lost the connection to your saved tasks. Reload the page to reconnect.")
+        );
+      },
+      async put(t) {
+        tasks.set(t.id, t); onChange();
+        const { id, ...body } = t;
+        try { await col.doc(id).set(body); } catch (e) { fail(); }
+      },
+      async remove(id) {
+        tasks.delete(id); onChange();
+        try { await col.doc(id).delete(); } catch (e) { fail(); }
+      },
+    };
+  }
+
+  /* ---------- selectors ---------- */
+  const lane = (name) => [...tasks.values()].filter((t) => t.lane === name);
+  const activeTasks = () => lane("active").sort((a, b) => (a.activeAt || a.createdAt) - (b.activeAt || b.createdAt));
+  const parkedTasks = () => lane("parked").sort((a, b) => a.parkedAt - b.parkedAt);
+  const doneTasks = () => lane("done").sort((a, b) => (b.endedAt || 0) - (a.endedAt || 0));
+
+  /* ---------- render ---------- */
+  function meter(node, n, label) {
+    node.querySelector(".cells").innerHTML = Array.from({ length: MAX }, (_, i) => `<i class="${i < n ? "on" : ""}"></i>`).join("");
+    node.querySelector(".num").textContent = `${n}/${MAX}`;
+    node.setAttribute("aria-label", `${label}: ${n} of ${MAX}`);
+  }
+  const tag = (t) => (t.example ? `<span class="tag">Example</span>` : "");
+  const dateCell = (label, ts) => `<div><dt>${label}</dt><dd class="${ts ? "" : "none"}">${ts ? fmt(ts) : "not yet"}</dd></div>`;
+  function delBtn(t) {
+    const armed = pendingDelete === t.id;
+    return `<button type="button" class="btn ${armed ? "confirm" : "quiet danger"}" data-act="delete" aria-label="${armed ? "Confirm delete" : "Delete"} ${esc(t.title)}">${armed ? "Confirm delete" : "Delete"}</button>`;
+  }
+
+  function activeCard(t, now, parkedFull) {
+    const running = !!t.runningSince;
+    return `<li class="card act${running ? " running" : ""}" data-id="${t.id}">
+      <div>
+        <div class="c-title">${esc(t.title)}${tag(t)}</div>
+        <dl class="dates">${dateCell("Started", t.startedAt)}${dateCell("Ended", null)}</dl>
+      </div>
+      <div class="timer">
+        <span class="t" data-elapsed="${t.id}">${dur(elapsed(t, now))}</span>
+        <span class="k">${running ? `<span class="live" aria-hidden="true"></span>Running` : t.elapsedMs ? "Paused" : "Ready"}</span>
+      </div>
+      <div class="c-actions">
+        <button type="button" class="btn play${running ? " on" : ""}" data-act="toggle">${running ? "Pause" : t.elapsedMs ? "Resume" : "Start"}</button>
+        <button type="button" class="btn go" data-act="done">Done</button>
+        <button type="button" class="btn" data-act="park" ${parkedFull ? `disabled title="The parking lot is full"` : ""}>Park</button>
+        <span class="spacer"></span>
+        ${delBtn(t)}
+      </div>
+    </li>`;
+  }
+
+  function parkedCard(t, now, activeFull) {
+    const rem = t.parkedAt + WEEK - now;
+    const ready = rem <= 0;
+    const pct = Math.min(100, Math.max(0, ((now - t.parkedAt) / WEEK) * 100));
+    const status = !ready ? `Unlocks in ${left(rem)}` : activeFull ? "Ready · ongoing is full" : "Ready to move up";
+    const why = !ready ? `Can move up on ${fmt(t.parkedAt + WEEK)}` : activeFull ? "Ongoing is full. Finish or park a task first." : "";
+    return `<li class="card park" data-id="${t.id}">
+      <div>
+        <div class="c-title">${esc(t.title)}${tag(t)}</div>
+        <dl class="dates">
+          <div><dt>Parked</dt><dd>${fmt(t.parkedAt)}</dd></div>
+          ${t.elapsedMs ? `<div><dt>Logged</dt><dd>${dur(t.elapsedMs)}</dd></div>` : ""}
+        </dl>
+      </div>
+      <div class="bar${ready ? " ready" : ""}"><i data-bar="${t.id}" style="width:${pct.toFixed(2)}%"></i></div>
+      <div class="p-row">
+        <span class="status${ready ? " ready" : ""}" data-unlock="${t.id}" data-ready="${ready ? 1 : 0}">${status}</span>
+        <div class="c-actions">
+          <button type="button" class="btn go" data-act="promote" ${ready && !activeFull ? "" : "disabled"} ${why ? `title="${esc(why)}"` : ""}>Move up</button>
+          ${delBtn(t)}
+        </div>
+      </div>
+    </li>`;
+  }
+
+  function doneRow(t) {
+    return `<tr data-id="${t.id}">
+      <td class="title"><span class="done-mark" aria-hidden="true">✓</span>${esc(t.title)}${tag(t)}</td>
+      <td class="num">${t.startedAt ? fmt(t.startedAt) : "—"}</td>
+      <td class="num">${fmt(t.endedAt)}</td>
+      <td class="num">${dur(t.elapsedMs || 0)}</td>
+      <td class="act">${delBtn(t)}</td>
+    </tr>`;
+  }
+
+  function render() {
+    const now = Date.now();
+    const act = activeTasks(), park = parkedTasks(), done = doneTasks();
+    const activeFull = act.length >= MAX, parkedFull = park.length >= MAX;
+
+    meter(el.mActive, act.length, "Ongoing");
+    meter(el.mParked, park.length, "Parked");
+
+    if (!loaded) {
+      el.activeList.innerHTML = `<li class="card empty loading">Loading tasks…</li>`;
+      el.parkedList.innerHTML = `<li class="card empty loading">Loading tasks…</li>`;
+      el.doneList.innerHTML = `<tr class="empty-row"><td colspan="5">Loading…</td></tr>`;
+    } else {
+      const openSlots = (n, word) => Array.from({ length: MAX - n }, (_, i) => `<li class="card empty">${word} ${pad(n + i + 1)} · open</li>`).join("");
+      el.activeList.innerHTML = act.map((t) => activeCard(t, now, parkedFull)).join("") + openSlots(act.length, "Slot");
+      el.parkedList.innerHTML = park.map((t) => parkedCard(t, now, activeFull)).join("") + openSlots(park.length, "Bay");
+      el.doneList.innerHTML = done.length
+        ? done.map(doneRow).join("")
+        : `<tr class="empty-row"><td colspan="5">Finished tasks land here with their start date, end date and logged time.</td></tr>`;
+    }
+    const total = done.reduce((s, t) => s + (t.elapsedMs || 0), 0);
+    el.doneSum.textContent = done.length ? `${done.length} finished · ${dur(total)} logged` : "";
+
+    // Add form state
+    el.laneActive.disabled = activeFull;
+    el.laneParked.disabled = parkedFull;
+    if (activeFull && el.laneActive.checked && !parkedFull) el.laneParked.checked = true;
+    if (parkedFull && el.laneParked.checked && !activeFull) el.laneActive.checked = true;
+    el.addBtn.disabled = !loaded || (activeFull && parkedFull);
+    el.hint.textContent = !loaded ? "" :
+      activeFull && parkedFull ? "Both lanes are full. Finish, park or delete a task to make room." :
+      activeFull ? "Ongoing is full (5/5). New tasks go to the parking lot." :
+      parkedFull ? "The parking lot is full (5/5). New tasks go to ongoing." : "";
+
+    el.clearEx.hidden = ![...tasks.values()].some((t) => t.example);
+    el.mode.textContent = store ? store.label : "";
+    tickClock(now);
+  }
+
+  /* ---------- live ticking ---------- */
+  function tickClock(now) {
+    const d = new Date(now);
+    el.clock.textContent = `${DAYS[d.getDay()].toUpperCase()} ${pad(d.getDate())} ${MONTHS[d.getMonth()].toUpperCase()} ${d.getFullYear()} · ${pad(d.getHours())}:${pad(d.getMinutes())}:${pad(d.getSeconds())}`;
+  }
+  function tick() {
+    const now = Date.now();
+    tickClock(now);
+    document.querySelectorAll("[data-elapsed]").forEach((n) => {
+      const t = tasks.get(n.dataset.elapsed);
+      if (t) n.textContent = dur(elapsed(t, now));
+    });
+    let crossed = false;
+    document.querySelectorAll("[data-unlock]").forEach((n) => {
+      const t = tasks.get(n.dataset.unlock);
+      if (!t) return;
+      const rem = t.parkedAt + WEEK - now;
+      if (rem <= 0) { if (n.dataset.ready !== "1") crossed = true; return; }
+      n.textContent = `Unlocks in ${left(rem)}`;
+      const bar = document.querySelector(`[data-bar="${t.id}"]`);
+      if (bar) bar.style.width = `${Math.min(100, ((now - t.parkedAt) / WEEK) * 100).toFixed(2)}%`;
+    });
+    if (crossed) render();
+    const running = [...tasks.values()].find((t) => t.runningSince && t.lane === "active");
+    document.title = running ? `${dur(elapsed(running, now))} · Task Bay` : "Task Bay";
+  }
+  function startTicker() {
+    tick();
+    setTimeout(() => { tick(); setInterval(tick, 1000); }, 1000 - (Date.now() % 1000));
+  }
+
+  /* ---------- actions ---------- */
+  let toastTimer = 0;
+  function toast(msg) {
+    el.toast.textContent = msg;
+    el.toast.hidden = false;
+    clearTimeout(toastTimer);
+    toastTimer = setTimeout(() => { el.toast.hidden = true; }, 4200);
+  }
+  const paused = (t, now) => (t.runningSince ? { ...t, elapsedMs: elapsed(t, now), runningSince: null } : t);
+
+  async function toggle(t) {
+    const now = Date.now();
+    if (t.runningSince) return store.put(paused(t, now));
+    for (const other of tasks.values()) {
+      if (other.id !== t.id && other.runningSince) await store.put(paused(other, now));
+    }
+    await store.put({ ...t, runningSince: now, startedAt: t.startedAt || now });
+  }
+  async function complete(t) {
+    const now = Date.now();
+    await store.put({ ...paused(t, now), lane: "done", endedAt: now });
+    toast(`Done. ${dur(elapsed(t, now))} logged.`);
+  }
+  async function park(t) {
+    if (parkedTasks().length >= MAX) return toast("The parking lot is full. Move up or delete a parked task first.");
+    const now = Date.now();
+    await store.put({ ...paused(t, now), lane: "parked", parkedAt: now });
+    toast(`Parked. It can move back up on ${fmt(now + WEEK)}.`);
+  }
+  async function promote(t) {
+    const now = Date.now();
+    if (now - t.parkedAt < WEEK) return toast(`Still parked. It can move up on ${fmt(t.parkedAt + WEEK)}.`);
+    if (activeTasks().length >= MAX) return toast("Ongoing is full. Finish or park a task first.");
+    await store.put({ ...t, lane: "active", activeAt: now, parkedAt: null });
+  }
+  async function del(t) {
+    if (pendingDelete !== t.id) {
+      pendingDelete = t.id;
+      clearTimeout(pendingTimer);
+      pendingTimer = setTimeout(() => { pendingDelete = null; render(); }, 4000);
+      return render();
+    }
+    pendingDelete = null;
+    clearTimeout(pendingTimer);
+    await store.remove(t.id);
+  }
+
+  document.addEventListener("click", (e) => {
+    const btn = e.target.closest("[data-act]");
+    if (!btn || !store) return;
+    const host = btn.closest("[data-id]");
+    const t = host && tasks.get(host.dataset.id);
+    if (!t) return;
+    const fn = { toggle, done: complete, park, promote, delete: del }[btn.dataset.act];
+    if (fn) fn(t);
+  });
+
+  el.form.addEventListener("submit", async (e) => {
+    e.preventDefault();
+    if (!store) return;
+    const title = el.title.value.trim();
+    if (!title) { el.title.focus(); return toast("Give the task a name first."); }
+    const where = el.laneParked.checked ? "parked" : "active";
+    const count = where === "active" ? activeTasks().length : parkedTasks().length;
+    if (count >= MAX) return toast(where === "active" ? "Ongoing is full." : "The parking lot is full.");
+    const now = Date.now();
+    el.title.value = "";
+    await store.put({
+      id: newId(), title, lane: where, createdAt: now,
+      activeAt: where === "active" ? now : null, parkedAt: where === "parked" ? now : null,
+      startedAt: null, endedAt: null, elapsedMs: 0, runningSince: null, example: false,
+    });
+    if (where === "parked") toast(`Parked until ${fmt(now + WEEK)}.`);
+  });
+
+  el.clearEx.addEventListener("click", async () => {
+    for (const t of [...tasks.values()].filter((x) => x.example)) await store.remove(t.id);
+    toast("Example tasks removed.");
+  });
+
+  /* ---------- boot ---------- */
+  async function boot() {
+    render();
+    startTicker();
+    let db = null, owner = false;
+    if (window.claude && typeof window.claude.use === "function") {
+      try {
+        const [d, u] = await Promise.all([window.claude.use("db"), window.claude.use("user")]);
+        db = d;
+        owner = u ? await u.isOwner() : false;
+      } catch (e) { db = null; }
+    }
+    store = db && owner ? remoteStore(db) : localStore;
+    store.init(() => { loaded = true; render(); });
+  }
+  boot();
+})();
+</script>
