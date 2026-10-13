@@ -1,40 +1,71 @@
 # Munger Lens: a stock research companion
 
-A local Streamlit app that runs each company through several independent research lenses. It then pulls them together the way Charlie Munger would: invert first, run the four filters, check your own psychology, and look for lollapalooza effects.
+A stock research app that runs each company through several independent research lenses. It then pulls them together the way Charlie Munger would: invert first, run the four filters, check your own psychology, and look for lollapalooza effects.
+
+It comes in two front ends that share the same analysis engine (`stockpicker/`):
+
+- **Native desktop app.** A real Qt (PyQt6) application with native widgets and charts. It has no web server and no browser, and it follows your desktop theme.
+- **Web version.** The original Streamlit app, which runs in your browser.
 
 > **This is a research aid, not advice.** It works from free Yahoo Finance data, which has gaps and errors, and from simple, transparent models. Use it to decide *what* to research, then read the filings.
 
-## Install as a Linux desktop app
+## Install on Linux (CachyOS, Arch, other distros)
 
 ```bash
 cd stock-picker
 ./install.sh
 ```
 
-Then open **Munger Lens** from your app menu, or run `munger-lens` in a terminal. The app opens in its own window, not a browser tab, and closing the window shuts it down. The installer doesn't need sudo. It puts everything under your home directory:
+Then open **Munger Lens** from your app menu. You can also run it from a terminal:
+
+| Command | What it does |
+|---|---|
+| `munger-lens` | Opens the native app. |
+| `munger-lens COST` | Opens straight to a company. |
+| `munger-lens --web` | Opens the web version in your browser. It's also in the menu entry's right-click actions. |
+
+### Matching your desktop
+
+- **CachyOS / Arch:** the installer offers to install your distro's `python-pyqt6` (`sudo pacman -S python-pyqt6`; it's the only step that asks for sudo). With it, the app runs on your system Qt, so the Breeze style, your Plasma color scheme and accent color, fonts and icons all apply natively. It also works on Wayland, with its own taskbar icon.
+- **Without the system package,** the app uses pip's PyQt6. It still reads your Plasma color scheme, font and icon theme from `~/.config/kdeglobals`, so colors and icons match, but the widget shapes use Qt's Fusion style instead of Breeze.
+- **On other desktops,** it follows your system's light/dark preference.
+
+### Where things go (no sudo needed)
 
 | Path | What's there |
 |---|---|
 | `~/.local/share/munger-lens/app`, `venv` | The app and its private Python environment. Both are replaced when you upgrade. |
-| `~/.local/share/munger-lens/data` | Your watchlist and the launcher log (`launcher.log`). |
-| `~/.local/share/munger-lens/env` | Settings. Put `export ANTHROPIC_API_KEY=...` here to enable Claude memos. |
+| `~/.local/share/munger-lens/data` | Your watchlist. |
+| `~/.local/share/munger-lens/env` | Your Anthropic API key, for Claude memos. Set it from **Settings → Configure Munger Lens**. |
+| `~/.config/munger-lens/` | Window layout, valuation assumptions and checklist answers. |
 | `~/.cache/munger-lens` | The market-data cache. |
 
 - **Upgrade:** pull the latest code and run `./install.sh` again. Your watchlist and settings are kept.
-- **Remove:** run `./uninstall.sh`. Add `--purge` to also delete your data.
+- **Remove:** run `./uninstall.sh`. Add `--purge` to also delete your data and settings.
 
-**Needs:** Python 3.10+ with venv (`sudo apt install python3-venv` on Debian/Ubuntu). The window uses Qt WebEngine, which needs a few system libraries. Most desktops already have them; the installer warns you if any look missing. Without them, the app opens in your browser instead and stops 10 minutes after you close the tab.
+**Needs:** Python 3.10+ with venv (`sudo apt install python3-venv` on Debian/Ubuntu). On Debian/Ubuntu, the system PyQt6 also needs `pyqt6-dev-tools`, which provides `PyQt6.uic` for the charts; without it, the installer uses pip's PyQt6.
 
 ## Run from source (development)
 
 ```bash
 cd stock-picker
 python -m venv .venv && source .venv/bin/activate
-pip install -r requirements.txt
-streamlit run app.py            # opens in the browser
+pip install -r requirements.txt -r requirements-desktop.txt -r requirements-pyqt.txt
+python -m stockpicker.gui       # native app
+streamlit run app.py            # web version
 ```
 
-To get optional Claude-written memos, export `ANTHROPIC_API_KEY` before you launch the app.
+To get optional Claude-written memos, export `ANTHROPIC_API_KEY` first, or enter it in the native app's Settings.
+
+**Keyboard shortcuts** in the native app:
+
+| Keys | Action |
+|---|---|
+| Ctrl+L | Jump to the ticker field |
+| F5 | Refresh data |
+| Ctrl+1 to Ctrl+4 | Switch pages |
+| Ctrl+Shift+, | Settings |
+| Ctrl+Q | Quit |
 
 ## What it does
 
@@ -80,14 +111,15 @@ Save tickers along with your thesis, then see their current scores at a glance.
 ## Layout
 
 ```
-app.py                      Streamlit UI
+app.py                      web UI (Streamlit)
+stockpicker/gui/            native desktop UI (PyQt6 + pyqtgraph); theme.py matches your desktop
 stockpicker/data.py         yfinance loader, disk cache, statement helpers
 stockpicker/research/       one module per lens + munger.py synthesis
 stockpicker/screener.py     universe screening and watchlist rankings
 stockpicker/ai_memo.py      optional Claude memo (streaming, web search)
-desktop/launcher.py         native-window launcher (pywebview + Qt) with browser fallback
-install.sh / uninstall.sh   per-user desktop install (app menu entry, icon, launcher)
+desktop/web_launcher.py     `munger-lens --web`: serves the web UI and opens your browser
+install.sh / uninstall.sh   per-user install (app menu entry, icon, launcher)
 tests/                      offline tests on synthetic yfinance-shaped data
 ```
 
-Run the tests with `python -m pytest -q`.
+Run the tests with `python -m pytest -q`. The GUI tests run offscreen, and they're skipped when PyQt6 isn't installed.

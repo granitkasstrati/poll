@@ -3,6 +3,7 @@
 from __future__ import annotations
 
 import json
+import threading
 import time
 from concurrent.futures import ThreadPoolExecutor, as_completed
 from pathlib import Path
@@ -22,8 +23,12 @@ def screen(
     workers: int = 6,
     progress: Callable[[int, int, str], None] | None = None,
     loader: Callable[[str], data_mod.CompanyData] = data_mod.load,
+    cancel: threading.Event | None = None,
 ) -> tuple[pd.DataFrame, list[str]]:
-    """Run all research lenses over `tickers`. Returns (summary table, failures)."""
+    """Run all research lenses over `tickers`. Returns (summary table, failures).
+
+    Setting `cancel` stops the screen early and returns what finished so far.
+    """
     tickers = list(dict.fromkeys(t.strip().upper() for t in tickers if t.strip()))
     rows, failed = [], []
 
@@ -43,6 +48,10 @@ def screen(
                 failed.append(f"{t}: {exc}")
             if progress:
                 progress(i, len(tickers), t)
+            if cancel is not None and cancel.is_set():
+                for f in futs:
+                    f.cancel()
+                break
     return pd.DataFrame(rows), failed
 
 

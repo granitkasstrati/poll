@@ -1,8 +1,6 @@
-"""Desktop launcher: runs the Streamlit app on a private local port and shows it
-in a native window (pywebview + Qt) instead of a browser tab.
-
-Closing the window shuts the server down. If the native window can't be
-created (missing system libraries), it falls back to the default browser.
+"""Web-version launcher (`munger-lens --web`): runs the Streamlit app on a private
+local port, opens it in your default browser, and shuts the server down once
+every tab has been closed for a while. The native app is `python -m stockpicker.gui`.
 """
 
 from __future__ import annotations
@@ -19,7 +17,6 @@ from pathlib import Path
 
 APP_NAME = "Munger Lens"
 APP_DIR = Path(__file__).resolve().parent.parent  # contains app.py and .streamlit/
-ICON = Path(__file__).resolve().parent / "munger-lens.png"
 DATA_DIR = Path(os.environ.get("STOCKPICKER_DATA", APP_DIR / ".userdata"))
 LOG_FILE = DATA_DIR / "launcher.log"
 
@@ -79,36 +76,6 @@ def notify_error(msg: str) -> None:
         pass
 
 
-def show_window(url: str) -> int:
-    """Runs in a child process (see main) so a Qt abort() can't take the launcher down."""
-    try:
-        import webview
-    except ImportError as exc:
-        print(f"[window] pywebview missing: {exc}", file=sys.stderr)
-        return 3
-
-    # Qt derives the window class (taskbar grouping, .desktop StartupWMClass) from argv[0].
-    sys.argv[0] = "munger-lens"
-    window = webview.create_window(
-        APP_NAME, url, width=1440, height=920, min_size=(900, 600),
-        background_color="#0d0d0d", text_select=True, zoomable=True,
-    )
-    smoke = float(os.environ.get("MUNGER_LENS_SMOKE_TEST", "0"))  # self-test: auto-close after N seconds
-
-    def after_start():
-        if smoke:
-            time.sleep(smoke)
-            window.destroy()
-
-    try:
-        webview.start(after_start, gui="qt", icon=str(ICON) if ICON.exists() else None,
-                      private_mode=False, storage_path=str(DATA_DIR / "webview"))
-    except Exception as exc:
-        print(f"[window] failed: {exc!r}", file=sys.stderr)
-        return 3
-    return 0
-
-
 def browser_connections(port: int) -> int:
     """Established TCP connections to our port (Linux /proc), i.e. open browser tabs."""
     count = 0
@@ -138,9 +105,6 @@ def serve_in_browser(url: str, port: int, proc: subprocess.Popen, idle_minutes: 
 
 
 def main() -> int:
-    if len(sys.argv) == 3 and sys.argv[1] == "--window":
-        return show_window(sys.argv[2])
-
     DATA_DIR.mkdir(parents=True, exist_ok=True)
     port = free_port()
     url = f"http://127.0.0.1:{port}"
@@ -157,14 +121,8 @@ def main() -> int:
             if not wait_until_ready(url, proc):
                 notify_error(f"The app server failed to start. See {LOG_FILE}")
                 return 1
-            window = subprocess.run([sys.executable, str(Path(__file__).resolve()), "--window", url],
-                                    stdout=log, stderr=subprocess.STDOUT, check=False)
-            if window.returncode != 0:
-                log.write(f"\n[launcher] native window exited with {window.returncode}; falling back to browser\n")
-                log.flush()
-                notify_error("Couldn't open the app window (missing system libraries?), so it opened in your "
-                             f"browser instead. It stops 10 minutes after you close the tab. Details: {LOG_FILE}")
-                serve_in_browser(url, port, proc)
+            print(f"Munger Lens web version: {url}  (stops 10 minutes after the last tab closes; Ctrl+C to stop now)")
+            serve_in_browser(url, port, proc)
         except KeyboardInterrupt:
             pass
         finally:
