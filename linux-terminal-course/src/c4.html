@@ -1,0 +1,454 @@
+<section class="module" id="m14" data-part="Running real systems" data-title="systemd and the journal" data-min="65">
+  <h2>systemd and the journal from the command line</h2>
+  <p class="lede">On almost every current distribution PID 1 is systemd. It starts services, restarts them when they die, schedules timers and collects every log line. Two commands, <code>systemctl</code> and <code>journalctl</code>, are your whole interface.</p>
+  <div class="goals"><h4>You will be able to</h4><ul>
+    <li>Inspect, start, stop, enable and debug units</li>
+    <li>Query the journal by unit, priority, time and pattern</li>
+    <li>Write your own service and timer units, system-wide and per-user</li>
+  </ul></div>
+
+  <h3>Units and states</h3>
+  <p>A <b>unit</b> is anything systemd manages: <code>.service</code>, <code>.timer</code>, <code>.socket</code>, <code>.mount</code>, <code>.target</code> (a named group, like <code>multi-user.target</code>). Two independent properties confuse everyone at first:</p>
+  <div class="tbl"><table>
+    <tr><th>Property</th><th>Question</th><th>Changed by</th></tr>
+    <tr><td>active / inactive / failed</td><td>Is it running <b>now</b>?</td><td><code>start</code>, <code>stop</code>, <code>restart</code></td></tr>
+    <tr><td>enabled / disabled</td><td>Will it start <b>at boot</b>?</td><td><code>enable</code>, <code>disable</code> (just symlinks into a target's <code>.wants/</code>)</td></tr>
+  </table></div>
+  <pre class="t live">
+$ systemctl status
+$ systemctl list-units --type=service
+$ systemctl --failed
+$ systemctl status sshd
+$ systemctl status sensor-logger
+$ systemctl is-active sshd; systemctl is-enabled bluetooth
+$ systemctl cat sensor-logger  # the unit file, with its path
+$ systemctl show -p Restart,MainPID sensor-api
+$ systemctl list-timers
+</pre>
+  <p><code>status</code> is the first thing to run for any service problem: it shows loaded/enabled state, active state, main PID, the cgroup's processes and the last few log lines in one screen.</p>
+
+  <h3>Changing things</h3>
+  <pre class="t live">
+$ systemctl restart sensor-api  # denied: system units need root
+$ sudo systemctl restart sensor-api; systemctl status sensor-api
+$ sudo systemctl stop sensor-api; systemctl is-active sensor-api
+$ sudo systemctl enable --now sensor-api  # enable for boot AND start now
+$ sudo systemctl start sensor-logger  # fails: go and read why
+</pre>
+  <div class="tbl"><table>
+    <tr><th>Command</th><th>Effect</th></tr>
+    <tr><td><code>start</code> / <code>stop</code> / <code>restart</code> / <code>reload</code></td><td>Now. <code>reload</code> asks the service to re-read its config without restarting</td></tr>
+    <tr><td><code>enable</code> / <code>disable</code> [<code>--now</code>]</td><td>At boot. <code>--now</code> also starts or stops</td></tr>
+    <tr><td><code>mask</code></td><td>Make it impossible to start, even as a dependency</td></tr>
+    <tr><td><code>daemon-reload</code></td><td>Re-read unit files after you edit them. Forgetting this is the classic mistake</td></tr>
+    <tr><td><code>edit UNIT</code></td><td>Create a drop-in override in <code>/etc/systemd/system/UNIT.d/</code> instead of editing the packaged file</td></tr>
+    <tr><td><code>reset-failed</code></td><td>Clear the failed state and the start-rate limiter</td></tr>
+  </table></div>
+
+  <h3>The journal</h3>
+  <pre class="t live">
+$ journalctl -u sensor-logger  # one unit
+$ journalctl -u sensor-logger -p err  # priority err and worse
+$ journalctl -p warning -n 5  # last 5 warnings from anything
+$ journalctl -k | tail -4  # kernel messages: dmesg without root
+$ journalctl -g 'usb|tty'  # grep the message text
+$ journalctl -u sensor-api -o cat | tail -2  # message only, no metadata
+$ journalctl -u sshd -r -n 2  # newest first
+</pre>
+  <div class="tbl"><table>
+    <tr><th>Option</th><th>Selects</th><th>Option</th><th>Selects</th></tr>
+    <tr><td><code>-u UNIT</code></td><td>One unit (repeatable)</td><td><code>-b</code> / <code>-b -1</code></td><td>This boot / the previous boot</td></tr>
+    <tr><td><code>-p err</code></td><td>emerg, alert, crit, err, warning, notice, info, debug (0–7): that level and worse</td><td><code>-k</code></td><td>Kernel ring buffer</td></tr>
+    <tr><td><code>--since "10 min ago"</code> <code>--until 14:00</code></td><td>Time window</td><td><code>-f</code></td><td>Follow, like <code>tail -f</code></td></tr>
+    <tr><td><code>-n 50</code> / <code>-e</code> / <code>-r</code></td><td>Last 50 / jump to end / newest first</td><td><code>-g REGEX</code></td><td>Filter on message text</td></tr>
+    <tr><td><code>-o json</code> / <code>-o cat</code></td><td>Structured / bare output</td><td><code>_PID=123</code> <code>_UID=1000</code></td><td>Match any journal field</td></tr>
+  </table></div>
+  <p>The debugging loop: <code>systemctl status X</code>, then <code>journalctl -xeu X</code> (explain, jump to end, unit), fix, <code>systemctl restart X</code>. In a second pane keep <code>journalctl -fu X</code> running.</p>
+
+  <h3>Writing a unit</h3>
+  <pre class="t">
+# /etc/systemd/system/sensor-logger.service
+[Unit]
+Description=Sensor mesh logger
+After=network-online.target          # ordering: start after this
+Wants=network-online.target          # dependency: pull it in
+
+[Service]
+User=sensor                          # do not run as root
+ExecStart=/usr/bin/sensor-logger --config /etc/sensor-logger.conf
+Restart=on-failure                   # no | on-failure | always
+RestartSec=5
+Environment=LOG_LEVEL=info
+WorkingDirectory=/var/lib/sensor
+
+[Install]
+WantedBy=multi-user.target           # what "enable" hooks it into
+</pre>
+  <ul>
+    <li><code>ExecStart</code> needs an <b>absolute path</b> and is not run by a shell: no pipes, <code>~</code> or <code>&amp;&amp;</code> unless you write <code>ExecStart=/bin/bash -c '...'</code>. A wrong path fails with status <code>203/EXEC</code>.</li>
+    <li>The service gets a minimal environment, not your <code>.bashrc</code>. Set what it needs with <code>Environment=</code> or <code>EnvironmentFile=</code>.</li>
+    <li>Do not daemonise or write your own log files: stay in the foreground and print to stdout/stderr, and the journal captures it.</li>
+    <li>Hardening is one line each: <code>ProtectSystem=strict</code>, <code>PrivateTmp=yes</code>, <code>NoNewPrivileges=yes</code>, <code>DeviceAllow=/dev/ttyUSB0 rw</code>. <code>systemd-analyze security UNIT</code> scores a unit.</li>
+  </ul>
+
+  <h3>User units and timers</h3>
+  <p>You have your own systemd instance. Units in <code>~/.config/systemd/user/</code> are managed with <code>systemctl --user</code>, need no root, and hook into <code>default.target</code>. They stop at logout unless you run <code>loginctl enable-linger $USER</code> once.</p>
+  <pre class="t">
+# ~/.config/systemd/user/backup.service        # ~/.config/systemd/user/backup.timer
+[Unit]                                          [Unit]
+Description=Back up ~/work                      Description=Nightly backup
+
+[Service]                                       [Timer]
+Type=oneshot                                    OnCalendar=*-*-* 02:30:00
+ExecStart=%h/work/scripts/backup.sh %h/work /mnt/nas     Persistent=true        # catch up after downtime
+
+                                                [Install]
+                                                WantedBy=timers.target
+</pre>
+  <pre class="t">
+$ systemctl --user daemon-reload
+$ systemctl --user enable --now backup.timer
+$ systemctl --user list-timers
+$ systemd-analyze calendar "Mon..Fri 07:30"      # check an expression and see the next trigger
+$ journalctl --user -u backup.service
+</pre>
+  <p>Timers replace cron with logging, dependencies, <code>Persistent=</code> catch-up and <code>RandomizedDelaySec=</code>. <code>OnCalendar</code> accepts <code>hourly</code>, <code>daily</code>, <code>weekly</code>, <code>Mon..Fri 07:30</code>, <code>*:0/15</code> (every 15 minutes); <code>OnBootSec=</code> and <code>OnUnitActiveSec=</code> give intervals. For a one-off: <code>systemd-run --user --on-active=30m notify-send "tea"</code>.</p>
+  <div class="hw"><b>On the bench:</b> a user unit is the clean way to keep a serial logger, MQTT bridge or OpenOCD server running: it restarts on failure, logs to the journal, and with a udev rule adding <code>TAG+="systemd", ENV{SYSTEMD_USER_WANTS}="serial-log.service"</code> it can start when the device is plugged in.</div>
+
+  <div class="missions"></div>
+  <div class="quiz"><h3>Check yourself</h3>
+    <div class="q"><p>You ran <code>systemctl enable foo</code> and rebooted nothing. Is foo running?</p><button>Yes</button><button data-ok>Not necessarily: enable only affects boot. Use start, or enable --now</button><button>Only after daemon-reload</button><p class="why">Enabled and active are separate. <code>enable --now</code> does both.</p></div>
+    <div class="q"><p>You edited a unit file and restarted the service, but the old settings are still in effect. What did you forget?</p><button>sudo</button><button data-ok>systemctl daemon-reload</button><button>systemctl enable</button><p class="why">systemd caches parsed unit files. It even warns you in <code>status</code> that the file changed on disk.</p></div>
+    <div class="q"><p>A unit fails with <code>status=203/EXEC</code>. Most likely cause?</p><button>The program crashed</button><button data-ok>ExecStart points at something systemd could not execute: wrong path, not executable, or bad shebang</button><button>Out of memory</button><p class="why">203 comes from systemd itself before your program runs. Check the path is absolute and has the x bit.</p></div>
+    <div class="q"><p>Which shows only errors from the previous boot?</p><button>journalctl -p err</button><button data-ok>journalctl -b -1 -p err</button><button>dmesg --level=err</button><p class="why"><code>-b -1</code> selects the boot before this one: essential after a crash, when the current boot's log is clean.</p></div>
+  </div>
+</section>
+
+<section class="module" id="m15" data-part="Running real systems" data-title="Networking from the terminal" data-min="60">
+  <h2>Networking from the terminal</h2>
+  <p class="lede">Network debugging is walking up the stack with one tool per layer until something says no: link, address, route, name, port, protocol.</p>
+  <div class="goals"><h4>You will be able to</h4><ul>
+    <li>Read interfaces, addresses, routes and neighbours with <code>ip</code></li>
+    <li>See what is listening and who is connected with <code>ss</code></li>
+    <li>Test names, ports and HTTP with <code>dig</code>, <code>nc</code>, <code>curl</code>, and capture packets with <code>tcpdump</code></li>
+  </ul></div>
+
+  <h3>The ladder</h3>
+  <ol class="steps">
+    <li><span><b>Link:</b> is the interface up with carrier? <code>ip -br link</code></span></li>
+    <li><span><b>Address:</b> do I have an IP in the right subnet? <code>ip -br addr</code></span></li>
+    <li><span><b>Route:</b> is there a path, and which interface does it use? <code>ip route get 1.1.1.1</code></span></li>
+    <li><span><b>Reachability:</b> does the gateway answer? the target? <code>ping -c 3</code></span></li>
+    <li><span><b>Name:</b> does the name resolve to what I think? <code>dig +short name</code></span></li>
+    <li><span><b>Port:</b> is anything listening, and can I reach it? <code>ss -tlnp</code>, <code>nc -zv host port</code></span></li>
+    <li><span><b>Protocol:</b> does it speak correctly? <code>curl -v</code>, <code>tcpdump</code></span></li>
+  </ol>
+  <pre class="t live">
+$ ip -br link
+$ ip -br addr
+$ ip addr show wlan0
+$ ip route
+$ ip route get 192.168.1.44
+$ ip neigh  # the ARP table: IP to MAC on the local segment
+$ ping -c 3 192.168.1.1
+$ ping -c 2 192.168.1.99  # same subnet, no answer: "Host Unreachable" comes from ARP failing
+</pre>
+  <p><code>ip</code> abbreviates everything (<code>ip a</code>, <code>ip r</code>, <code>ip l</code>), <code>-br</code> gives one line per interface, <code>-4</code>/<code>-6</code> filter by family, <code>-j</code> emits JSON, and <code>-c</code> adds colour. In <code>192.168.1.57/24</code> the <code>/24</code> says the first 24 bits are the network: anything in <code>192.168.1.0–255</code> is on-link, everything else goes via the default gateway. <code>ifconfig</code>, <code>route</code>, <code>arp</code> and <code>netstat</code> are the deprecated ancestors.</p>
+  <div class="hw"><b>On the bench:</b> <code>ip neigh</code> after a ping sweep is the quickest way to find the IP a new board just got from DHCP, and the first three bytes of the MAC identify the vendor (24:6f:28 is Espressif).</div>
+
+  <h3>Sockets</h3>
+  <pre class="t live">
+$ ss -tln  # TCP, listening, numeric
+$ ss -tulpn  # add UDP and owning processes
+$ sudo ss -tulpn  # process names for sockets you do not own need root
+$ sudo ss -tlnp | grep ':22 '
+$ ss -tn  # established connections
+</pre>
+  <p>Read the local address column carefully. <code>0.0.0.0:8080</code> accepts connections from anywhere; <code>127.0.0.1:631</code> only from this machine. "It works locally but not from another host" is very often a service bound to localhost, or a firewall (<code>sudo nft list ruleset</code>).</p>
+
+  <h3>Names and ports</h3>
+  <pre class="t live">
+$ dig +short archlinux.org
+$ dig lab.lan
+$ getent hosts lab  # the way programs resolve: /etc/hosts first, then DNS
+$ nc -zv localhost 8080  # is the port open?
+$ nc -zv localhost 8081
+$ nc -zv 192.168.1.44 80
+$ nmap 192.168.1.44  # what else is listening there?
+</pre>
+  <p><code>nc</code> without <code>-z</code> connects stdin and stdout to the socket: type an HTTP request by hand, pipe a file across (<code>nc -l 9000 &gt; out</code> on one side, <code>nc host 9000 &lt; in</code> on the other), or poke at a device's debug port.</p>
+  <div class="warn"><b>Scan only what you own or are authorised to test.</b> Port scanning other people's hosts is hostile at best and illegal in many places. Your own lab, your own devices, and deliberately vulnerable targets are fair game and excellent practice.</div>
+
+  <h3>curl</h3>
+  <pre class="t live">
+$ curl http://localhost:8080/health
+$ curl -i http://localhost:8080/health  # include response headers
+$ curl -I http://localhost:8080/health  # HEAD request: headers only
+$ curl -v http://localhost:8080/admin  # the whole conversation
+$ curl -s -o /dev/null -w '%{http_code} %{time_total}s\n' http://localhost:8080/api/nodes
+$ curl -sf http://localhost:8080/missing || echo "request failed with status $?"
+$ curl -s -X POST -H 'Content-Type: application/json' -d '{"node":"node-c","temp_c":23.6}' http://localhost:8080/api/readings
+$ curl -s -u admin:secret http://localhost:8080/admin
+$ curl -sL http://localhost:8080/old  # follow redirects
+$ curl -s http://localhost:8080/api/nodes | jq -r '.[].id'
+</pre>
+  <div class="tbl"><table>
+    <tr><th>Flag</th><th>Meaning</th><th>Flag</th><th>Meaning</th></tr>
+    <tr><td><code>-s</code> / <code>-S</code></td><td>Silent / but still show errors</td><td><code>-f</code></td><td>Exit non-zero on HTTP 4xx/5xx</td></tr>
+    <tr><td><code>-o FILE</code> / <code>-O</code></td><td>Save to FILE / to the remote name</td><td><code>-L</code></td><td>Follow redirects</td></tr>
+    <tr><td><code>-X</code>, <code>-H</code>, <code>-d</code></td><td>Method, header, body</td><td><code>-w FORMAT</code></td><td>Print metadata: <code>%{http_code}</code>, <code>%{time_total}</code></td></tr>
+    <tr><td><code>-v</code></td><td>Show request and response headers</td><td><code>-k</code> / <code>--resolve</code></td><td>Skip TLS verification / pin a name to an IP for testing</td></tr>
+  </table></div>
+  <p>In scripts always use <code>curl -fsS</code>: quiet on success, an error message and non-zero exit on failure. Without <code>-f</code>, a 500 page counts as success.</p>
+
+  <h3>Packets</h3>
+  <pre class="t live">
+$ tcpdump -ni wlan0  # needs root
+$ sudo tcpdump -ni wlan0 -c 6
+$ sudo tcpdump -ni wlan0 'tcp port 8080'
+$ sudo tcpdump -ni wlan0 udp
+</pre>
+  <p><code>-n</code> skips name lookups, <code>-i</code> picks the interface, <code>-c N</code> stops after N packets, <code>-A</code> prints payloads as text, and <code>-w file.pcap</code> saves a capture you can open in Wireshark. The filter language (BPF) reads naturally: <code>host 192.168.1.44 and not port 22</code>, <code>tcp[tcpflags] &amp; tcp-syn != 0</code>.</p>
+  <div class="hw"><b>Security lens:</b> put an IoT device on a network you control and run <code>sudo tcpdump -ni wlan0 host DEVICE_IP -w dev.pcap</code> while it boots. DNS queries reveal its cloud endpoints, plain HTTP reveals firmware update URLs, and an unexpected open port (like 2323 on the camera in this sandbox) is an invitation to look closer with <code>nc</code>.</div>
+
+  <div class="missions"></div>
+  <div class="quiz"><h3>Check yourself</h3>
+    <div class="q"><p>A service shows as listening on <code>127.0.0.1:5000</code>. Another machine cannot connect. Why?</p><button>The firewall</button><button data-ok>It is bound to loopback only; it must listen on 0.0.0.0 or the LAN address</button><button>Port 5000 is privileged</button><p class="why">Loopback is only reachable from the same host. An SSH <code>-L</code> tunnel is a quick way to reach it without reconfiguring.</p></div>
+    <div class="q"><p><code>ping host</code> works but <code>curl http://host</code> says connection refused. What does that tell you?</p><button>DNS is broken</button><button data-ok>The host is up and reachable, but nothing is listening on port 80 (or a firewall rejects it)</button><button>The route is wrong</button><p class="why">"Refused" is an active answer (a TCP RST). A firewall that drops silently would give a timeout instead.</p></div>
+    <div class="q"><p>Why <code>curl -f</code> in scripts?</p><button>It is faster</button><button data-ok>Without it curl exits 0 even when the server returns 404 or 500</button><button>It follows redirects</button><p class="why">HTTP errors are valid responses as far as the transfer is concerned. <code>-f</code> turns them into exit status 22.</p></div>
+  </div>
+</section>
+
+<section class="module" id="m16" data-part="Running real systems" data-title="Performance and diagnosis" data-min="45">
+  <h2>Is it CPU, memory, disk or network?</h2>
+  <p class="lede">When a machine is slow, guessing wastes time. A fixed sixty-second checklist tells you which resource is saturated, and then a second tool tells you who is using it.</p>
+  <div class="goals"><h4>You will be able to</h4><ul>
+    <li>Read load average, <code>top</code>, <code>free</code>, <code>df</code> and <code>du</code> correctly</li>
+    <li>Pull live numbers straight from <code>/proc</code> and <code>/sys</code></li>
+    <li>Know which specialised tool to reach for next</li>
+  </ul></div>
+
+  <h3>The first minute</h3>
+  <pre class="t live">
+$ uptime  # load averages: 1, 5, 15 minutes
+$ nproc
+$ top
+$ free -h
+$ df -h
+$ du -sh ~/work/* | sort -h
+$ sudo dmesg | tail -3  # recent kernel complaints: OOM kills, I/O errors, USB resets
+$ journalctl -p err -n 5
+</pre>
+  <div class="tbl"><table>
+    <tr><th>Number</th><th>How to read it</th></tr>
+    <tr><td>Load average</td><td>Average count of processes running or waiting for CPU <b>or uninterruptible I/O</b>. Compare with the core count: 2.0 on 2 cores is fully busy; 8.0 is a queue. Rising 1-minute versus 15-minute means it is getting worse</td></tr>
+    <tr><td><code>top</code>: us / sy / wa / id</td><td>User code / kernel / <b>waiting for disk</b> / idle. High <code>wa</code> with low <code>us</code> means the disk is the bottleneck, not the CPU</td></tr>
+    <tr><td><code>free</code>: available</td><td>What programs can still get. "free" is small on a healthy system because spare RAM is used as page cache, which is given back on demand</td></tr>
+    <tr><td>Swap used and growing</td><td>Real memory pressure. Look for the biggest RSS in <code>ps aux --sort=-rss</code></td></tr>
+    <tr><td><code>df</code>: Use% 100</td><td>Full filesystem: writes fail in odd ways. Also check inodes with <code>df -i</code></td></tr>
+  </table></div>
+  <p>Inside <code>top</code>: <kbd>P</kbd> sort by CPU, <kbd>M</kbd> by memory, <kbd>1</kbd> per-core view, <kbd>c</kbd> full command lines, <kbd>k</kbd> kill, <kbd>q</kbd> quit. <code>htop</code> and <code>btop</code> are friendlier; <code>top -bn1 | head -15</code> works in scripts and over slow links.</p>
+
+  <h3>Finding where the disk went</h3>
+  <pre class="t live">
+$ du -sh ~/work
+$ du -h -d 1 ~/work | sort -h  # one level deep
+$ du -ah ~/work | sort -h | tail -5  # the largest individual entries
+$ find ~/work -type f -size +3k -exec ls -lh {} +
+</pre>
+  <p>On a real machine: <code>sudo du -xh -d 1 / | sort -h</code> (<code>-x</code> stays on one filesystem), or the interactive <code>ncdu /</code>. If <code>df</code> says full but <code>du</code> cannot find the data, a process is holding a deleted file open: <code>sudo lsof +L1</code> lists them, and restarting that process frees the space.</p>
+
+  <h3>/proc and /sys: numbers without tools</h3>
+  <pre class="t live">
+$ cat /proc/loadavg
+$ grep -E 'MemTotal|MemAvailable|SwapFree' /proc/meminfo
+$ awk '/MemAvailable/ {printf "%.1f GiB available\n", $2 / 1048576}' /proc/meminfo
+$ grep -m1 'model name' /proc/cpuinfo
+$ cat /sys/class/thermal/thermal_zone0/temp  # millidegrees Celsius
+$ cat /sys/class/net/wlan0/operstate /sys/class/net/wlan0/address
+$ cat /proc/sys/vm/swappiness /proc/sys/net/ipv4/ip_forward  # tunables; sysctl -a lists them all
+</pre>
+  <p><code>/proc</code> is the kernel's view of processes and system-wide counters; <code>/sys</code> is the device tree with one value per file. Every monitoring tool reads these files, and on a stripped embedded system with no tools installed, <code>cat</code> still works. Writing to them changes kernel behaviour live: <code>echo 1 | sudo tee /proc/sys/net/ipv4/ip_forward</code> is the same as <code>sysctl -w net.ipv4.ip_forward=1</code>.</p>
+  <div class="hw"><b>On the bench:</b> <code>/sys/class/gpio</code>, <code>/sys/class/leds/*/brightness</code>, <code>/sys/bus/i2c/devices</code>, <code>/sys/class/hwmon/*/temp1_input</code> and <code>/sys/kernel/debug</code> are where a single-board computer exposes its hardware. <code>grep -r . /sys/class/thermal/thermal_zone*/temp</code> prints every file name with its value, a handy trick for any directory of one-value files.</div>
+
+  <h3>The next tool, by symptom</h3>
+  <div class="tbl"><table>
+    <tr><th>Symptom</th><th>Tool</th><th>Shows</th></tr>
+    <tr><td>CPU busy</td><td><code>pidstat 1</code>, <code>perf top</code></td><td>Per-process CPU each second; which functions are hot</td></tr>
+    <tr><td>Disk busy (high wa)</td><td><code>iostat -xz 1</code>, <code>iotop</code></td><td>Per-device utilisation and latency; which process is doing I/O</td></tr>
+    <tr><td>Memory</td><td><code>vmstat 1</code>, <code>smem</code>, <code>ps aux --sort=-rss</code></td><td>Swap-in/out rates; per-process real usage</td></tr>
+    <tr><td>Network</td><td><code>ss -s</code>, <code>iftop</code>, <code>nethogs</code>, <code>sar -n DEV 1</code></td><td>Socket counts; per-connection and per-process bandwidth</td></tr>
+    <tr><td>One slow program</td><td><code>time cmd</code>, <code>strace -c cmd</code>, <code>strace -T -p PID</code></td><td>real vs user vs sys; time per syscall; where it blocks</td></tr>
+    <tr><td>Slow boot</td><td><code>systemd-analyze blame</code>, <code>critical-chain</code></td><td>Which units took the time</td></tr>
+    <tr><td>History</td><td><code>sar</code> (sysstat), <code>journalctl --since</code></td><td>What it looked like at 03:00 when it happened</td></tr>
+    <tr><td>Anything, deeply</td><td><code>bpftrace</code>, <code>bcc</code> tools (<code>execsnoop</code>, <code>opensnoop</code>, <code>biolatency</code>)</td><td>Kernel-level tracing with negligible overhead</td></tr>
+  </table></div>
+  <p><code>time</code> output decoded: <b>real</b> is wall-clock, <b>user</b> is CPU in your code, <b>sys</b> is CPU in the kernel. real much greater than user + sys means the program was waiting (disk, network, sleep), not computing.</p>
+  <pre class="t live">
+$ time sort logs/access.log &gt; /dev/null
+$ strace -c sort logs/access.log &gt; /dev/null
+</pre>
+
+  <div class="missions"></div>
+  <div class="quiz"><h3>Check yourself</h3>
+    <div class="q"><p>Load average is 6.0 on a 2-core machine, yet CPU is 90% idle. What is going on?</p><button>The numbers are wrong</button><button data-ok>Processes are blocked in uninterruptible I/O; look at wa and the disks</button><button>Too many sleeping processes</button><p class="why">Linux counts tasks in state D in the load average. High load with idle CPU points at storage or a hung network filesystem.</p></div>
+    <div class="q"><p><code>free</code> shows 200 MiB free but 5 GiB available. Should you worry?</p><button>Yes, memory is nearly exhausted</button><button data-ok>No: the rest is page cache, reclaimable on demand</button><button>Only if swap is off</button><p class="why">Unused RAM is wasted RAM, so the kernel caches files in it. "available" is the number that matters.</p></div>
+    <div class="q"><p><code>time make</code>: real 2m10s, user 0m8s, sys 0m3s. Where did the time go?</p><button>Compiling</button><button data-ok>Waiting: disk, network or a lock. The CPU was only busy for 11 seconds</button><button>Kernel code</button><p class="why">real minus (user + sys) is time off-CPU. <code>strace -T</code> would show the slow calls.</p></div>
+  </div>
+</section>
+
+<section class="module" id="m17" data-part="The hardware bench" data-title="Devices, serial ports and udev" data-min="70">
+  <h2>Devices, serial ports and udev</h2>
+  <p class="lede">You plug in a dev board. Between the click of the USB connector and bytes on your screen there are five places it can go wrong, and the terminal shows you each one. The sandbox has an ESP32 behind a CP2102 bridge waiting on <code>/dev/ttyUSB0</code>.</p>
+  <div class="goals"><h4>You will be able to</h4><ul>
+    <li>Trace a device from kernel log to <code>/dev</code> node to permissions</li>
+    <li>Write udev rules for stable names and access</li>
+    <li>Configure and use a serial line from the shell, and drive flashing tools</li>
+  </ul></div>
+
+  <h3>What the kernel saw</h3>
+  <pre class="t live">
+$ dmesg | tail  # restricted on this distro
+$ sudo dmesg | tail -6
+$ journalctl -k -g 'usb|tty'  # the unprivileged route
+$ lsusb
+$ lsusb -t  # the tree, with the bound driver per interface
+$ lsusb -v -d 10c4:ea60
+$ ls -l /dev/ttyUSB* /dev/ttyS0
+$ cat /sys/bus/usb/devices/1-2/product
+</pre>
+  <p>Run <code>sudo dmesg -w</code> in one pane and plug the device in: you see enumeration, the vendor:product ID, which driver claimed it and the node name it was given. Nothing in dmesg means a cable (many USB cables are charge-only), a hub, or power. An ID with no driver line means the kernel module is missing.</p>
+  <div class="tbl"><table>
+    <tr><th>Node</th><th>What it is</th></tr>
+    <tr><td><code>/dev/ttyUSB0</code></td><td>USB-to-serial bridge chip: CP210x, CH340, FTDI. Most ESP32 and Arduino-clone boards</td></tr>
+    <tr><td><code>/dev/ttyACM0</code></td><td>USB CDC-ACM: the microcontroller itself speaks USB. ATmega16U2-based Arduinos, ESP32-S3/C3 native USB, STM32 virtual COM, PIC18F4550 CDC firmware</td></tr>
+    <tr><td><code>/dev/ttyS0</code>, <code>/dev/ttyAMA0</code></td><td>A real UART on the board (PC serial port, Raspberry Pi header)</td></tr>
+    <tr><td><code>/dev/serial/by-id/usb-Silicon_Labs_CP2102_...</code></td><td>Stable symlinks udev already makes for you. Use these in scripts</td></tr>
+    <tr><td><code>/dev/hidraw0</code>, <code>/dev/bus/usb/001/004</code></td><td>HID devices and raw USB access (libusb): debug probes, DFU bootloaders</td></tr>
+  </table></div>
+
+  <h3>Permissions, the right way</h3>
+  <pre class="t live">
+$ cat /dev/ttyUSB0  # Permission denied
+$ ls -l /dev/ttyUSB0  # crw-rw---- root uucp
+$ id  # are you in that group?
+$ sudo usermod -aG uucp op
+$ id
+</pre>
+  <p>The node belongs to group <code>uucp</code> on Arch-based systems and <code>dialout</code> on Debian, Ubuntu and Fedora. Add yourself once, log out and back in (group membership is read at login), and never run your toolchain with sudo. <code>-aG</code> appends; plain <code>-G</code> would replace all your groups, including the one that lets you sudo.</p>
+
+  <h3>udev rules</h3>
+  <p>udev is the daemon that creates <code>/dev</code> nodes when the kernel announces hardware. Rules in <code>/etc/udev/rules.d/*.rules</code> match device attributes with <code>==</code> and assign properties with <code>=</code> or <code>+=</code>. Ask udev what you can match on:</p>
+  <pre class="t live">
+$ udevadm info -a /dev/ttyUSB0  # walks up the device tree: attributes at each level
+$ udevadm info /dev/ttyUSB0  # the properties udev already set
+$ cat /etc/udev/rules.d/50-example.rules
+</pre>
+  <pre class="t">
+# /etc/udev/rules.d/99-bench.rules   (one rule per line, comma-separated)
+# a stable name for the ESP32 dev board, usable by group uucp
+SUBSYSTEM=="tty", ATTRS{idVendor}=="10c4", ATTRS{idProduct}=="ea60", SYMLINK+="esp32", MODE="0660", GROUP="uucp"
+# two identical bridges? add the serial number
+SUBSYSTEM=="tty", ATTRS{idVendor}=="0403", ATTRS{idProduct}=="6001", ATTRS{serial}=="A50285BI", SYMLINK+="target_uart"
+# raw USB access for a debug probe without root (matches the usb device, not a tty)
+SUBSYSTEM=="usb", ATTR{idVendor}=="0483", ATTR{idProduct}=="3748", MODE="0660", GROUP="uucp", TAG+="uaccess"
+</pre>
+  <pre class="t live">
+$ echo 'SUBSYSTEM=="tty", ATTRS{idVendor}=="10c4", ATTRS{idProduct}=="ea60", SYMLINK+="esp32"' | sudo tee /etc/udev/rules.d/99-esp32.rules
+$ sudo udevadm control --reload
+$ sudo udevadm trigger
+$ ls -l /dev/esp32
+</pre>
+  <p>Why bother: <code>ttyUSB0</code> is assigned in plug order. With two adapters, the target console and the flasher swap names depending on which you plugged in first, and one day you flash the wrong board. A symlink keyed on vendor, product and serial number never moves. Debug rules with <code>udevadm test $(udevadm info -q path /dev/ttyUSB0)</code> and watch events with <code>udevadm monitor</code>.</p>
+
+  <h3>Talking over the line</h3>
+  <p>A tty device has line settings: speed, data bits, parity, stop bits, flow control, and a "cooked" mode that echoes and edits lines, which you do not want when talking to a microcontroller. <code>stty</code> reads and writes them.</p>
+  <pre class="t live">
+$ stty -F /dev/ttyUSB0  # current settings: 9600 baud
+$ cat /dev/ttyUSB0  # garbage: the board talks at 115200
+$ stty -F /dev/ttyUSB0 115200 raw -echo
+$ cat /dev/ttyUSB0
+$ picocom -b 115200 /dev/ttyUSB0
+</pre>
+  <p>Garbage characters almost always mean a baud mismatch; nothing at all means TX/RX swapped, no common ground, or the wrong port. With the line configured, plain shell tools work: <code>cat /dev/ttyUSB0 | tee boot.log</code> captures, <code>echo -ne 'help\r' &gt; /dev/ttyUSB0</code> sends, and <code>ts</code> (moreutils) timestamps each line.</p>
+  <div class="tbl"><table>
+    <tr><th>Terminal program</th><th>Start</th><th>Quit</th><th>Good for</th></tr>
+    <tr><td><code>picocom</code></td><td><code>picocom -b 115200 /dev/ttyUSB0</code></td><td><kbd>Ctrl</kbd>+<kbd>A</kbd> <kbd>Ctrl</kbd>+<kbd>X</kbd></td><td>Small, predictable; <code>--logfile</code>, <code>--omap crlf</code></td></tr>
+    <tr><td><code>tio</code></td><td><code>tio -b 115200 /dev/ttyUSB0</code></td><td><kbd>Ctrl</kbd>+<kbd>T</kbd> <kbd>Q</kbd></td><td>Auto-reconnects when the board resets or is replugged</td></tr>
+    <tr><td><code>screen</code></td><td><code>screen /dev/ttyUSB0 115200</code></td><td><kbd>Ctrl</kbd>+<kbd>A</kbd> <kbd>K</kbd></td><td>Already installed everywhere</td></tr>
+    <tr><td><code>minicom</code></td><td><code>minicom -D /dev/ttyUSB0 -b 115200</code></td><td><kbd>Ctrl</kbd>+<kbd>A</kbd> <kbd>X</kbd></td><td>Menus, file transfer (xmodem) for old bootloaders</td></tr>
+  </table></div>
+  <div class="warn"><b>Voltage first.</b> A USB-UART adapter set to 5 V will damage a 3.3 V or 1.8 V target. Measure the target's TX idle level with a multimeter before connecting RX, connect ground first, and leave VCC unconnected when the board has its own supply.</div>
+
+  <h3>Flashing tools</h3>
+  <pre class="t live">
+$ esptool.py --port /dev/esp32 chip_id
+$ esptool.py --port /dev/esp32 flash_id
+$ esptool.py --port /dev/esp32 read_flash 0x8000 0x1000 /tmp/ptable.bin  # dump the partition table
+$ xxd /tmp/ptable.bin | head -6
+$ avrdude -p m2560 -c wiring -P /dev/ttyUSB0 -b 115200 -U flash:w:fw.hex:i
+</pre>
+  <div class="tbl"><table>
+    <tr><th>Target</th><th>Typical command</th></tr>
+    <tr><td>ESP32 (ESP-IDF)</td><td><code>idf.py -p /dev/esp32 flash monitor</code> (wraps esptool; <kbd>Ctrl</kbd>+<kbd>]</kbd> exits the monitor)</td></tr>
+    <tr><td>ESP32, raw</td><td><code>esptool.py -p PORT -b 460800 write_flash 0x1000 bootloader.bin 0x8000 partitions.bin 0x10000 app.bin</code></td></tr>
+    <tr><td>ATmega2560 via bootloader</td><td><code>avrdude -p m2560 -c wiring -P PORT -b 115200 -D -U flash:w:fw.hex:i</code></td></tr>
+    <tr><td>AVR via ISP programmer</td><td><code>avrdude -p m2560 -c usbasp -U flash:w:fw.hex:i -U lfuse:r:-:h</code></td></tr>
+    <tr><td>PIC18F4550</td><td><code>pk2cmd -P PIC18F4550 -F fw.hex -M</code> (PICkit 2), <code>ipecmd</code> (MPLAB), or a USB HID bootloader</td></tr>
+    <tr><td>ARM Cortex-M (SWD/JTAG)</td><td><code>openocd -f interface/stlink.cfg -f target/stm32f1x.cfg -c "program fw.elf verify reset exit"</code></td></tr>
+    <tr><td>SPI flash chip, in circuit</td><td><code>flashrom -p ch341a_spi -r dump.bin</code> (read twice and compare)</td></tr>
+  </table></div>
+
+  <div class="missions"></div>
+  <div class="quiz"><h3>Check yourself</h3>
+    <div class="q"><p>You plug in a board and <code>dmesg</code> shows nothing new at all. Most likely?</p><button>Missing udev rule</button><button data-ok>A charge-only cable, dead port or unpowered board: the kernel never saw a device</button><button>Wrong baud rate</button><p class="why">udev rules and baud rates only matter after enumeration. No kernel message means no USB data connection.</p></div>
+    <div class="q"><p>Why prefer a udev <code>SYMLINK</code> over hard-coding <code>/dev/ttyUSB0</code>?</p><button>Symlinks are faster</button><button data-ok>ttyUSBn numbers depend on plug order; a symlink keyed on IDs or serial is stable</button><button>ttyUSB0 needs root</button><p class="why">Also consider the ready-made <code>/dev/serial/by-id/</code> links.</p></div>
+    <div class="q"><p>The serial console prints <code>�x��x�x</code>. First thing to change?</p><button>The cable</button><button data-ok>The baud rate</button><button>Flow control</button><p class="why">Consistent garbage means bits are arriving but being sampled at the wrong rate. Try 115200, 9600, 57600, 74880 (ESP8266 boot ROM), 921600.</p></div>
+    <div class="q"><p><code>sudo usermod -G uucp op</code> (no <code>-a</code>) does what?</p><button>Adds op to uucp</button><button data-ok>Makes uucp op's ONLY supplementary group, removing wheel and the rest</button><button>Fails</button><p class="why">And without wheel you can no longer sudo to fix it. Always <code>-aG</code>.</p></div>
+  </div>
+</section>
+
+<section class="module" id="m19" data-part="The hardware bench" data-title="Capstone" data-min="90">
+  <h2>Capstone: six jobs, no hand-holding</h2>
+  <p class="lede">Each mission below is a small real task of the kind that lands on your desk: an incident to triage, a report to produce, files to reorganise. They combine everything from the earlier modules, and none of them needs more than a few lines.</p>
+  <div class="goals"><h4>How to approach them</h4><ul>
+    <li>Look at the data first: <code>head</code>, <code>wc -l</code>, <code>cut</code> one line apart by hand</li>
+    <li>Build the pipeline one stage at a time, checking the output after each <code>|</code></li>
+    <li>Preview anything destructive with <code>echo</code> in front before you run it for real</li>
+  </ul></div>
+
+  <h3>The method</h3>
+  <ol class="steps">
+    <li><span><b>State the question as a sentence.</b> "For each hour, how many requests?" already names the key (hour) and the operation (count).</span></li>
+    <li><span><b>Find the key in one line.</b> Which separator isolates it? <code>head -1 FILE | cut -d: -f2</code>, or <code>awk '{print $4}'</code>.</span></li>
+    <li><span><b>Filter early.</b> Drop the lines you do not need with <code>grep</code> or an awk pattern before doing anything expensive.</span></li>
+    <li><span><b>Normalise, then aggregate.</b> <code>sort | uniq -c</code>, or an awk array when you need sums or more than one key.</span></li>
+    <li><span><b>Rank and trim.</b> <code>sort -rn | head</code>.</span></li>
+    <li><span><b>Promote it.</b> When you have run the same line three times, put it in a script with <code>set -euo pipefail</code> and arguments.</span></li>
+  </ol>
+  <pre class="t live">
+$ head -2 logs/access.log
+$ head -1 logs/access.log | cut -d: -f2  # the hour
+$ head -3 logs/auth.log
+$ grep -c . logs/access.log logs/auth.log logs/app.log
+$ for f in photos/*.jpeg; do echo mv "$f" "${f%.jpeg}.jpg"; done  # dry run: echo first
+</pre>
+
+  <h3>Where to go from here</h3>
+  <div class="grid2">
+    <div class="card"><h4>Make it your daily driver</h4><p>For two weeks, do file management, searching and git from the terminal only. Every time you reach for the mouse, look up the command instead.</p></div>
+    <div class="card"><h4>OverTheWire: Bandit</h4><p>A free wargame over SSH. Thirty-odd levels of exactly the skills in this course, with no hints.</p></div>
+    <div class="card"><h4>Read real scripts</h4><p><code>less /usr/bin/ssh-copy-id</code>, your distro's packaging scripts, the <code>install.sh</code> of tools you use. Run shellcheck on them.</p></div>
+    <div class="card"><h4>Man pages worth an evening</h4><p><code>man bash</code> (sections EXPANSION and REDIRECTION), <code>man 7 signal</code>, <code>man 5 systemd.service</code>, <code>man 7 udev</code>.</p></div>
+    <div class="card"><h4>Your dotfiles</h4><p>Put <code>~/.bashrc</code> or fish config, <code>~/.ssh/config</code>, tmux and vim config in a git repository. A new machine becomes yours in a minute.</p></div>
+    <div class="card"><h4>Build a bench box</h4><p>A Raspberry Pi with a USB-UART adapter, tmux, a udev rule per board and a user unit that logs each console: this course, applied.</p></div>
+  </div>
+
+  <div class="missions"></div>
+  <div class="quiz"><h3>Final check</h3>
+    <div class="q"><p>You need the ten largest files under <code>/var</code>, staying on one filesystem. Which is closest?</p><button>ls -lS /var | head</button><button data-ok>sudo find /var -xdev -type f -printf '%s %p\n' | sort -rn | head</button><button>du -sh /var</button><p class="why"><code>ls</code> is not recursive and <code>du -s</code> gives one total. find emits size and path, sort ranks, head trims: the standard shape.</p></div>
+    <div class="q"><p>A script works when you run it and fails from a systemd timer with "command not found". First suspect?</p><button>Permissions</button><button data-ok>PATH: the unit has a minimal environment and never read your shell startup files</button><button>The shebang</button><p class="why">Use absolute paths or set <code>Environment=PATH=...</code> in the unit.</p></div>
+    <div class="q"><p>Which one-liner safely deletes all <code>*.o</code> files below the current directory, including names with spaces?</p><button>rm $(find . -name *.o)</button><button>find . -name '*.o' | xargs rm</button><button data-ok>find . -name '*.o' -delete</button><p class="why">The first breaks on spaces and on the unquoted glob; the second on spaces. <code>-delete</code> (or <code>-print0 | xargs -0 rm</code>) is safe.</p></div>
+    <div class="q"><p>What single habit prevents the largest share of shell bugs?</p><button>Using uppercase variable names</button><button data-ok>Double-quoting every expansion</button><button>Ending lines with semicolons</button><p class="why"><code>"$var"</code>, <code>"$@"</code>, <code>"$(cmd)"</code>. Then <code>set -euo pipefail</code> and shellcheck catch most of the rest.</p></div>
+  </div>
+</section>

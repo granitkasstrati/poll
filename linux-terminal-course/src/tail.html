@@ -1,0 +1,20 @@
+</main>
+<section class="bench" id="bench" data-open="true" aria-label="Sandbox terminal">
+  <div class="bench-head">
+    <span class="ttl">bench <i>sandbox shell</i></span>
+    <button id="b-clear" title="Clear the screen (Ctrl-L)">clear</button>
+    <button id="b-reset" title="Rebuild the sandbox machine from scratch">reset machine</button>
+    <button id="b-fold" class="benchtab" aria-expanded="true">hide</button>
+  </div>
+  <div class="ticker" id="ticker"><span class="tag">Mission</span><span id="ticktext"></span></div>
+  <div id="out" role="log" aria-live="polite"></div>
+  <div class="inrow"><label for="cmdline" id="prompt"></label><input id="cmdline" type="text" autocomplete="off" autocapitalize="off" autocorrect="off" spellcheck="false" aria-label="Command line"></div>
+</section>
+</div>
+<div class="editor" id="editor" hidden>
+  <div class="pane" role="dialog" aria-label="Sandbox editor">
+    <header><span id="ed-name"></span><button id="ed-cancel">Cancel (Esc)</button><button id="ed-save" class="save">Save (Ctrl-S)</button></header>
+    <textarea id="ed-text" spellcheck="false" autocapitalize="off" autocomplete="off" aria-label="File contents"></textarea>
+    <div class="msg" id="ed-msg"></div>
+  </div>
+</div>

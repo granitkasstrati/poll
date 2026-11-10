@@ -1,0 +1,398 @@
+<section class="module" id="m00" data-part="Orientation" data-title="How this course works" data-min="10">
+  <h2>A terminal course with a machine attached</h2>
+  <p class="lede">Nineteen modules that take you from "I can get around" to fluent: the shell as a programming language, text processing, processes, scripting, remote work, systemd, and the serial and device tooling you need at a hardware bench. Every module ends in graded missions you solve in the terminal on this page.</p>
+  <div class="meta"><span>19 modules</span><span>110 missions</span><span>about 20 hours</span><span>bash, with fish notes</span></div>
+
+  <h3>The sandbox</h3>
+  <p>The dark panel is <b>bench</b>, a simulated Linux machine. It is a real interpreter for bash syntax (quoting, expansions, pipes, redirection, loops, functions, scripts) over an in-memory filesystem, with about 150 commands, a process table, a systemd journal, a network and a USB-serial device. It is small enough to hold in your head and safe to wreck: <b>reset machine</b> rebuilds it.</p>
+  <ul>
+    <li><b>Missions</b> are checked after every command. Most have many valid answers: the checker compares your output or the resulting state, not your keystrokes.</li>
+    <li><b>Hint</b> names the tool. <b>Solution</b> shows one answer and can run it for you. Use them when stuck for more than a few minutes; you learn more from reading a solution than from quitting.</li>
+    <li>Commands in blocks with an underline on hover are <b>live</b>: click one to place it on the command line, then press <kbd>Enter</kbd>.</li>
+    <li><kbd>Tab</kbd> completes commands and paths. <kbd>↑</kbd> walks history. <kbd>Ctrl</kbd>+<kbd>L</kbd> clears, <kbd>Ctrl</kbd>+<kbd>C</kbd> abandons the line, <kbd>Ctrl</kbd>+<kbd>R</kbd> searches history.</li>
+    <li>A red number before the prompt, like <code>[1]</code>, is the exit status of the last command when it was not zero. Output in the warmer colour came from stderr. Real terminals show neither; here they are teaching aids.</li>
+  </ul>
+  <pre class="t live">
+$ pwd
+$ ls
+$ cat notes/todo.md
+$ type ll
+$ man find
+</pre>
+
+  <h3>What the sandbox is not</h3>
+  <p>It has no network beyond a few simulated hosts, no package installs, no compiler, and interactive full-screen programs (vim, tmux, top, less) are either simplified or described. Those modules give you the mental model, drills and key maps; you then practise on your own machine. Sandbox files do not survive a page reload, but your completed missions do.</p>
+  <div class="note"><b>bash and fish.</b> The sandbox speaks bash, because bash (and POSIX sh) is what scripts, servers, containers, CI and embedded targets run. If your interactive shell is fish, everything about processes, files, pipes and tools transfers unchanged; only the language syntax differs, and each module flags the differences that matter. On your machine, type <code>bash</code> to drop into bash and <code>exit</code> to return.</div>
+
+  <h3>How to work through it</h3>
+  <ol class="steps">
+    <li><span>Read a section, then run its live examples and change them. Prediction first: say what you expect before you press Enter.</span></li>
+    <li><span>Do the missions without hints. When one resists, use <code>man</code>, <code>help</code> and <code>argv</code> before the hint button.</span></li>
+    <li><span>Take the quiz. The explanations are part of the lesson, including for the ones you got right.</span></li>
+    <li><span>Repeat the module's missions on your real system with your own files. Fluency comes from the second and third repetition.</span></li>
+  </ol>
+  <div class="missions"></div>
+</section>
+
+<section class="module" id="m01" data-part="The shell is a language" data-title="How a command line runs" data-min="50">
+  <h2>From keystrokes to a running process</h2>
+  <p class="lede">Almost every "weird" shell behaviour stops being weird once you know the exact sequence the shell follows between Enter and the program starting.</p>
+  <div class="goals"><h4>You will be able to</h4><ul>
+    <li>List the stages a line goes through, in order, and predict what a program receives</li>
+    <li>Tell builtins, functions, aliases and external programs apart, and say why it matters</li>
+    <li>Explain <code>PATH</code> lookup, <code>fork</code>/<code>exec</code>, the environment and exit status</li>
+  </ul></div>
+
+  <h3>The pipeline inside the shell</h3>
+  <ol class="steps">
+    <li><span><b>Read and tokenize.</b> The line is split into words and operators (<code>|</code> <code>&amp;&amp;</code> <code>;</code> <code>&gt;</code>). Quotes and backslashes decide what counts as one word. Aliases are substituted here, on the first word only.</span></li>
+    <li><span><b>Parse.</b> Tokens become a tree: lists of pipelines of commands, plus compound commands (<code>if</code>, <code>for</code>, <code>{ }</code>, <code>( )</code>).</span></li>
+    <li><span><b>Expand</b> each word, in this fixed order: brace expansion, tilde, then parameter / command / arithmetic substitution (left to right), then word splitting, then pathname expansion (globbing), and finally quote removal.</span></li>
+    <li><span><b>Redirect.</b> Files are opened and file descriptors rearranged, left to right.</span></li>
+    <li><span><b>Execute.</b> The first word names a function, builtin or program. For a program the shell <code>fork</code>s a copy of itself and the child calls <code>execve</code> with an argument array and an environment.</span></li>
+    <li><span><b>Wait.</b> The shell collects the child's exit status into <code>$?</code>.</span></li>
+  </ol>
+  <p>The program never sees your quotes, your <code>*</code>, or your <code>$HOME</code>. It gets a finished array of strings. The sandbox has a helper, <code>argv</code>, that prints that array so you can stop guessing:</p>
+  <pre class="t live">
+$ argv *.md "$HOME" '$HOME' ~ notes/*
+$ argv a   b    "c   d"
+$ x="one two"; argv $x "$x"
+$ argv {1..3}{a,b}
+$ argv "" $nothing ''
+</pre>
+  <p>Study the third and fifth lines. An unquoted variable is split into words and each word is glob-expanded; an unquoted empty variable vanishes entirely, while <code>""</code> is a real, empty argument. That one rule causes more script bugs than everything else combined, and Module 02 is about it.</p>
+
+  <h3>What kind of thing is that command?</h3>
+  <div class="tbl"><table>
+    <tr><th>Kind</th><th>Lives in</th><th>Why it exists</th></tr>
+    <tr><td>Alias</td><td>Shell memory, interactive only</td><td>Text substitution on the first word. Not available in scripts by default</td></tr>
+    <tr><td>Function</td><td>Shell memory</td><td>Runs in the current shell: can change directory, set variables</td></tr>
+    <tr><td>Builtin</td><td>The shell binary</td><td>Must affect the shell itself (<code>cd</code>, <code>export</code>, <code>read</code>, <code>exit</code>) or be fast (<code>echo</code>, <code>[</code>)</td></tr>
+    <tr><td>External program</td><td>A file found via <code>PATH</code></td><td>Everything else: runs in a child process</td></tr>
+  </table></div>
+  <p><code>cd</code> has to be a builtin: a child process cannot change its parent's working directory. For the same reason a script cannot <code>cd</code> or set variables "for you" unless you <code>source</code> it.</p>
+  <pre class="t live">
+$ type cd ls ll if
+$ type -a echo  # a builtin AND a file; the builtin wins
+$ which cd  # which only searches PATH, so it cannot know
+$ command -v ls  # the portable way to ask in scripts
+$ \ls  # backslash: skip alias lookup for this word
+</pre>
+
+  <h3>PATH, fork and exec</h3>
+  <p><code>PATH</code> is a colon-separated list of directories searched left to right for a file with the execute bit. Names containing a slash skip the search, which is why you run local programs as <code>./prog</code>: the current directory is deliberately not in <code>PATH</code>, so a file named <code>ls</code> in a downloaded archive cannot hijack your commands.</p>
+  <pre class="t live">
+$ echo $PATH
+$ PATH= ls  # an empty PATH for one command
+$ env | head -5
+$ FOO=bar env | grep FOO  # one-shot environment for a single command
+$ FOO=bar; bash -c 'echo "child sees: [$FOO]"'
+$ export FOO; bash -c 'echo "child sees: [$FOO]"'
+</pre>
+  <p>A variable is private to the shell until you <code>export</code> it; exported variables are copied into each child's environment at <code>exec</code> time. Copied, not shared: a child can never change its parent's variables.</p>
+
+  <h3>Exit status is the shell's boolean</h3>
+  <p>Every command returns 0 to 255. Zero means success; anything else is failure, and the specific value belongs to the program (<code>grep</code>: 1 = no match, 2 = error). The shell reserves 126 (found but not executable), 127 (not found) and 128+N (killed by signal N, so 130 is Ctrl-C). <code>if</code>, <code>while</code>, <code>&amp;&amp;</code> and <code>||</code> all test exit status, never output.</p>
+  <pre class="t live">
+$ grep -q op /etc/passwd; echo $?
+$ grep -q nosuchuser /etc/passwd; echo $?
+$ grep -q x /no/such/file; echo $?
+$ nosuchcommand; echo $?
+$ mkdir /tmp/demo && cd /tmp/demo && pwd
+$ cd /nonexistent || echo "could not cd, staying in $PWD"
+$ if grep -q wheel /etc/group; then echo "wheel exists"; fi
+</pre>
+  <div class="note"><b>fish:</b> the stages are the same, with two friendlier rules. Variables are lists and are never word-split, so <code>$x</code> behaves like bash's <code>"$x"</code>. And <code>$status</code> replaces <code>$?</code>.</div>
+
+  <div class="missions"></div>
+  <div class="quiz"><h3>Check yourself</h3>
+    <div class="q"><p>You run <code>rm $file</code> where <code>file="my report.txt"</code>. What does <code>rm</code> receive?</p><button>One argument: my report.txt</button><button data-ok>Two arguments: my and report.txt</button><button>The literal string $file</button><p class="why">Parameter expansion happens first, then word splitting on the unquoted result. <code>"$file"</code> suppresses the split.</p></div>
+    <div class="q"><p>Which happens first?</p><button>Globbing</button><button>Variable expansion</button><button data-ok>Brace expansion</button><p class="why">Braces expand before anything else, which is why <code>{1..$n}</code> does not work in bash: the variable has not been expanded yet when the braces are examined.</p></div>
+    <div class="q"><p>A script contains <code>cd /srv/app</code>. After you run it with <code>./script.sh</code>, your shell is…</p><button>in /srv/app</button><button data-ok>where it was before</button><button>in your home directory</button><p class="why">The script ran in a child process. Its working directory died with it. <code>source script.sh</code> would run it in your shell.</p></div>
+    <div class="q"><p>A command exits with status 137. What most likely happened?</p><button>It was not found</button><button>It printed 137 errors</button><button data-ok>It was killed by signal 9 (SIGKILL)</button><p class="why">128 + 9. Typical causes: someone ran <code>kill -9</code>, or the kernel's out-of-memory killer chose it.</p></div>
+  </div>
+</section>
+
+<section class="module" id="m02" data-part="The shell is a language" data-title="Quoting and expansions" data-min="70">
+  <h2>Quoting and the seven expansions</h2>
+  <p class="lede">Expansions are the shell's standard library. Knowing them well removes most calls to <code>sed</code>, <code>basename</code> and <code>expr</code>, and knowing the quoting rules removes most bugs.</p>
+  <div class="goals"><h4>You will be able to</h4><ul>
+    <li>Choose between no quotes, double quotes, single quotes and <code>$'...'</code> on purpose</li>
+    <li>Use parameter expansion for defaults, trimming, replacement, substrings and case</li>
+    <li>Work with arrays, arithmetic, brace expansion and globs without surprises</li>
+  </ul></div>
+
+  <h3>Four ways to quote</h3>
+  <div class="tbl"><table>
+    <tr><th>Form</th><th>Expands</th><th>Use for</th></tr>
+    <tr><td><code>word</code></td><td>Everything, then splits and globs</td><td>Literal text you control; places where you want splitting</td></tr>
+    <tr><td><code>"word"</code></td><td><code>$var</code>, <code>$(cmd)</code>, <code>$((n))</code>; no splitting, no globbing</td><td>The default for every variable</td></tr>
+    <tr><td><code>'word'</code></td><td>Nothing at all</td><td>Regexes, awk and sed programs, anything with <code>$</code> or <code>\</code></td></tr>
+    <tr><td><code>$'word'</code></td><td>Backslash escapes only: <code>\n</code> <code>\t</code> <code>\x41</code></td><td>Literal tabs and newlines</td></tr>
+  </table></div>
+  <pre class="t live">
+$ echo "$USER owes $5"  # $5 is the fifth positional parameter: empty
+$ echo "$USER owes \$5"
+$ echo 'no $expansion here, not even \n'
+$ argv $'tab\there' "it's" 'say "hi"' 'it'\''s'
+$ argv "$(echo a b)" $(echo a b)
+</pre>
+  <p>You cannot put a single quote inside single quotes. The idiom <code>'it'\''s'</code> closes the quote, adds an escaped quote, and reopens. Adjacent quoted pieces join into one word.</p>
+  <div class="warn"><b>Rule:</b> double-quote every expansion unless you can say why not. <code>"$var"</code>, <code>"$(cmd)"</code>, <code>"$@"</code>, <code>"${arr[@]}"</code>. Unquoted is the special case.</div>
+
+  <h3>Parameter expansion</h3>
+  <div class="tbl"><table>
+    <tr><th>Syntax</th><th>Result</th></tr>
+    <tr><td><code>${v:-word}</code></td><td>Value of v, or word if v is unset or empty</td></tr>
+    <tr><td><code>${v:=word}</code></td><td>Same, and also assigns word to v</td></tr>
+    <tr><td><code>${v:?msg}</code></td><td>Value of v, or abort with msg: a one-line required-argument check</td></tr>
+    <tr><td><code>${v:+word}</code></td><td>word if v is set and non-empty, else nothing</td></tr>
+    <tr><td><code>${#v}</code></td><td>Length in characters</td></tr>
+    <tr><td><code>${v#pat}</code> / <code>${v##pat}</code></td><td>Remove shortest / longest match of glob pat from the <b>front</b></td></tr>
+    <tr><td><code>${v%pat}</code> / <code>${v%%pat}</code></td><td>Remove shortest / longest match from the <b>back</b></td></tr>
+    <tr><td><code>${v/pat/rep}</code> / <code>${v//pat/rep}</code></td><td>Replace first / all matches</td></tr>
+    <tr><td><code>${v:off:len}</code></td><td>Substring (negative offset needs a space: <code>${v: -3}</code>)</td></tr>
+    <tr><td><code>${v^^}</code> / <code>${v,,}</code></td><td>Upper / lower case (bash 4+)</td></tr>
+  </table></div>
+  <p>A mnemonic for trimming: on a US keyboard <code>#</code> is left of <code>$</code> and <code>%</code> is right of it. <code>#</code> trims the left end, <code>%</code> the right.</p>
+  <pre class="t live">
+$ f=/home/op/work/fw/firmware.v2.bin
+$ echo "${f##*/}"  # basename
+$ echo "${f%/*}"  # dirname
+$ echo "${f##*.}"  # extension
+$ b=${f##*/}; echo "${b%%.*}  ${b%.*}"  # shortest vs longest
+$ echo "${f/work/archive}  ${f//\//:}"
+$ echo "${b^^}  ${#b}  ${b:0:8}  ${b: -3}"
+$ echo "${BAUD:-115200}"; echo "[${BAUD}]"
+$ : "${BAUD:=9600}"; echo "$BAUD"
+$ unset BAUD; echo "${BAUD:?set BAUD first}"
+</pre>
+
+  <h3>Command and arithmetic substitution</h3>
+  <p><code>$(command)</code> runs the command in a subshell and substitutes its stdout with trailing newlines removed. It nests cleanly; the old backtick form does not, so avoid it. <code>$((expr))</code> evaluates integer arithmetic with C operators, and variables inside need no <code>$</code>.</p>
+  <pre class="t live">
+$ echo "kernel $(uname -r) on $(hostname)"
+$ lines=$(wc -l &lt; logs/access.log); echo "$lines requests"
+$ echo $(( (lines + 9) / 10 ))  # integer division, rounded up
+$ echo $(( 0x1000 + 0x20 ))  $(( 1 &lt;&lt; 12 ))  $(( 0xFF &amp; ~0x0F ))
+$ printf '0x%08x\n' $(( 0x10000 + 4 * 4096 ))
+$ n=5; (( n++ )); (( n &gt; 5 )) &amp;&amp; echo "n is now $n"
+</pre>
+  <div class="hw"><b>On the bench:</b> shell arithmetic understands hex and bit operators, which makes it a handy calculator for flash offsets and register masks. It is integer only: for floating point use <code>awk 'BEGIN{print 3.3*4095/4096}'</code> or <code>bc -l</code>.</div>
+
+  <h3>Brace expansion and globs</h3>
+  <p>Braces <b>generate</b> words whether or not files exist; globs <b>match</b> existing names. Braces run first, so they can produce globs.</p>
+  <pre class="t live">
+$ echo {a,b,c}.txt img{01..04}.png {x..z}
+$ cp conf/serial.conf{,.bak}; ls conf  # the classic backup idiom
+$ ls src/*.c
+$ ls src/[mu]*.[ch]
+$ ls src/*.{c,h}  # braces first, then two globs
+$ echo src/*.xyz  # no match: the pattern is passed through unchanged
+</pre>
+  <p>That last line is a trap: when nothing matches, bash leaves the pattern as a literal string, so <code>for f in *.log</code> runs once with <code>f='*.log'</code> in an empty directory. Guard with <code>[[ -e $f ]] || continue</code>, or enable <code>shopt -s nullglob</code> in scripts. Globs skip dotfiles unless the pattern starts with a dot, and <code>**</code> recursion needs <code>shopt -s globstar</code>.</p>
+
+  <h3>Arrays</h3>
+  <p>Whenever you hold a list of things (files, arguments), use an array. A string with spaces in it cannot represent file names that contain spaces.</p>
+  <pre class="t live">
+$ files=(src/*.c "notes/my notes.txt")
+$ echo "${#files[@]} items, first: ${files[0]}"
+$ for f in "${files[@]}"; do echo "- $f"; done
+$ files+=(Makefile); echo "${files[@]: -2}"
+$ args=(-l -h --); ls "${args[@]}" src | head -3  # build a command safely
+$ declare -A baud=([esp32]=115200 [atmega]=57600); echo "${baud[esp32]} ${!baud[@]}"
+</pre>
+  <p><code>"${arr[@]}"</code> expands to one word per element. Without the quotes, or with <code>*</code>, elements get re-split. The same holds for <code>"$@"</code>, the array of a script's arguments.</p>
+  <div class="note"><b>fish:</b> no word splitting, so most of this pain is absent. Lists are native (<code>set files src/*.c</code>, <code>$files[1]</code>, 1-indexed), command substitution is <code>(cmd)</code>, arithmetic is <code>math</code>, and string surgery is <code>string replace</code>, <code>string split</code>, <code>path basename</code>.</div>
+
+  <div class="missions"></div>
+  <div class="quiz"><h3>Check yourself</h3>
+    <div class="q"><p><code>v=archive.tar.gz</code>. What is <code>${v%.*}</code>?</p><button>archive</button><button data-ok>archive.tar</button><button>tar.gz</button><p class="why">One <code>%</code> removes the shortest suffix matching <code>.*</code>, which is <code>.gz</code>. <code>%%</code> would give <code>archive</code>.</p></div>
+    <div class="q"><p>Which loop is correct for file names containing spaces?</p><button>for f in $(ls *.bin)</button><button>for f in `find . -name '*.bin'`</button><button data-ok>for f in *.bin</button><p class="why">A glob expands directly to one word per file, with no splitting. Command substitution output is split on whitespace, breaking such names.</p></div>
+    <div class="q"><p>What does <code>echo "$((16#ff))"</code> print?</p><button>16#ff</button><button data-ok>255</button><button>An error</button><p class="why"><code>base#digits</code> is bash's arbitrary-base literal; <code>0xff</code> works too. Useful: <code>$((2#1010))</code> is 10.</p></div>
+    <div class="q"><p>Inside a script, which form passes all arguments on to another command unchanged?</p><button>$*</button><button>$@</button><button data-ok>"$@"</button><p class="why">Only quoted <code>"$@"</code> preserves each argument as its own word, including empty ones and ones with spaces.</p></div>
+  </div>
+</section>
+
+<section class="module" id="m03" data-part="The shell is a language" data-title="Streams, pipes and redirection" data-min="60">
+  <h2>File descriptors, pipes and redirection</h2>
+  <p class="lede">A process does not know about your terminal. It knows three numbered slots, and the shell decides what each one is connected to before the program starts.</p>
+  <div class="goals"><h4>You will be able to</h4><ul>
+    <li>Reason about any redirection as edits to a file-descriptor table, in order</li>
+    <li>Route stdout and stderr independently, including through pipes</li>
+    <li>Use here-documents, process substitution, <code>tee</code>, <code>PIPESTATUS</code> and <code>pipefail</code></li>
+  </ul></div>
+
+  <h3>The descriptor table</h3>
+  <p>Each process has a table of open files indexed by small integers. By convention 0 is stdin, 1 is stdout, 2 is stderr. A redirection is an instruction to the shell: "before exec, make slot N point here". They are applied <b>left to right</b>, and <code>N&gt;&amp;M</code> means "make N a copy of whatever M points to <i>right now</i>".</p>
+  <div class="tbl"><table>
+    <tr><th>Syntax</th><th>Effect on the table</th></tr>
+    <tr><td><code>&gt; f</code> / <code>&gt;&gt; f</code></td><td>1 → f, truncating / appending</td></tr>
+    <tr><td><code>2&gt; f</code></td><td>2 → f</td></tr>
+    <tr><td><code>&lt; f</code></td><td>0 ← f</td></tr>
+    <tr><td><code>&gt; f 2&gt;&amp;1</code></td><td>1 → f, then 2 → (where 1 points) = f. Both in f</td></tr>
+    <tr><td><code>2&gt;&amp;1 &gt; f</code></td><td>2 → (where 1 points) = terminal, then 1 → f. Errors still on screen</td></tr>
+    <tr><td><code>&amp;&gt; f</code></td><td>bash shorthand for <code>&gt; f 2&gt;&amp;1</code></td></tr>
+    <tr><td><code>&gt;&amp;2</code></td><td>1 → where 2 points: how scripts print error messages</td></tr>
+    <tr><td><code>2&gt;/dev/null</code></td><td>Discard errors</td></tr>
+    <tr><td><code>a | b</code></td><td>a's 1 → pipe → b's 0, set up before a's own redirections</td></tr>
+  </table></div>
+  <p>The sandbox has a command built for practising this. <code>sensor-scan</code> writes three lines to stdout and two to stderr and exits with status 3:</p>
+  <pre class="t live">
+$ sensor-scan
+$ sensor-scan &gt; /dev/null  # only the stderr lines remain
+$ sensor-scan 2&gt; /dev/null
+$ sensor-scan &gt; /tmp/both 2&gt;&amp;1; cat /tmp/both
+$ sensor-scan 2&gt;&amp;1 &gt; /tmp/out  # order matters: errors still reach the screen
+$ sensor-scan 2&gt;&amp;1 | grep -c node  # both streams through the pipe
+$ sensor-scan 2&gt;&amp;1 &gt;/dev/null | tr a-z A-Z  # only stderr through the pipe
+</pre>
+  <div class="warn"><b>Truncation happens first.</b> In <code>sort f &gt; f</code> the shell empties <code>f</code> before <code>sort</code> reads it. Use <code>sort -o f f</code>, <code>sed -i</code>, or write to a temp file and <code>mv</code>. And <code>sudo echo x &gt; /etc/file</code> fails because your unprivileged shell opens the file, not sudo: use <code>echo x | sudo tee /etc/file</code>.</div>
+
+  <h3>Pipes</h3>
+  <p>A pipe is a kernel buffer (64 KiB by default) with a write end and a read end. Every stage of a pipeline starts <b>at the same time</b>; they are not run one after another. A writer blocks when the buffer is full, a reader blocks when it is empty, and when the reader exits the writer receives <code>SIGPIPE</code>, which is why <code>yes | head -1</code> terminates.</p>
+  <p>Each stage runs in its own subshell, which has a famous consequence:</p>
+  <pre class="t live">
+$ count=0; cat logs/app.log | while read -r line; do count=$((count+1)); done; echo "count=$count"
+$ count=0; while read -r line; do count=$((count+1)); done &lt; logs/app.log; echo "count=$count"
+$ sensor-scan | grep ok; echo "status: $?  all: ${PIPESTATUS[@]}"
+$ set -o pipefail; sensor-scan | grep -q ok; echo "with pipefail: $?"; set +o pipefail
+</pre>
+  <p>The first loop counted inside a subshell and the result was thrown away. Redirecting into the loop keeps it in your shell. The exit status of a pipeline is the status of its <b>last</b> command unless <code>pipefail</code> is on, so a failing producer goes unnoticed by default.</p>
+
+  <h3>tee, here-documents, here-strings</h3>
+  <pre class="t live">
+$ sensor-scan 2&gt;&amp;1 | tee /tmp/scan.log | grep -c error
+$ wc -w &lt;&lt;&lt; "a here-string feeds one line to stdin"
+$ grep -c node &lt;&lt;&lt; "$(sensor-scan 2&gt;&amp;1)"
+</pre>
+  <pre class="t">
+$ cat &gt; /tmp/unit.conf &lt;&lt;EOF
+> user=$USER          # expanded: the delimiter is unquoted
+> home=$HOME
+> EOF
+$ cat &lt;&lt;'EOF'
+> literal $USER and $(date): quoting the delimiter disables expansion
+> EOF
+</pre>
+  <p>Type those two in the terminal: after the first line the prompt changes to <code>&gt;</code> and the shell keeps reading until it sees the delimiter alone on a line. Quote the delimiter when you are writing a script, an awk program or a config template that contains <code>$</code>.</p>
+
+  <h3>Process substitution</h3>
+  <p><code>&lt;(cmd)</code> runs <code>cmd</code> and gives you a file name (like <code>/dev/fd/63</code>) whose contents are its output. It lets commands that insist on file arguments read from pipelines, and it avoids temp files.</p>
+  <pre class="t live">
+$ echo &lt;(true)  # it really is just a path
+$ diff &lt;(sort data/calibrated.txt) &lt;(cut -d, -f2 data/sensors.csv | sed 1d | sort -u)
+$ comm -12 &lt;(grep -oE '[0-9.]{7,}' logs/access.log | sort -u) &lt;(grep -oE '[0-9.]{7,}' logs/auth.log | sort -u)
+</pre>
+  <p>That last command answers "which addresses appear in both the web log and the SSH log?" in one line.</p>
+
+  <h3>Idioms worth memorising</h3>
+  <div class="tbl"><table>
+    <tr><th>Idiom</th><th>Meaning</th></tr>
+    <tr><td><code>cmd &gt; out.log 2&gt; err.log</code></td><td>Split the two streams into two files</td></tr>
+    <tr><td><code>cmd 2&gt;&amp;1 | less</code></td><td>Page through everything</td></tr>
+    <tr><td><code>cmd |&amp; tee log</code></td><td>bash shorthand for <code>2&gt;&amp;1 |</code></td></tr>
+    <tr><td><code>echo "error: ..." &gt;&amp;2</code></td><td>Diagnostics belong on stderr so pipelines stay clean</td></tr>
+    <tr><td><code>cmd &lt; /dev/null</code></td><td>Make sure cmd cannot wait for keyboard input</td></tr>
+    <tr><td><code>exec &gt; &gt;(tee run.log) 2&gt;&amp;1</code></td><td>In a script: log everything from here on, and still show it</td></tr>
+    <tr><td><code>: &gt; file</code></td><td>Truncate a file to zero bytes</td></tr>
+  </table></div>
+  <div class="note"><b>fish:</b> redirection syntax is the same except stderr-to-pipe is <code>2&gt;| </code> or <code>&amp;|</code>, process substitution is <code>(cmd | psub)</code>, and there are no here-documents (pipe <code>printf</code> or use a multi-line string).</div>
+
+  <div class="missions"></div>
+  <div class="quiz"><h3>Check yourself</h3>
+    <div class="q"><p>Where do error messages go in <code>make 2&gt;&amp;1 &gt; build.log</code>?</p><button>build.log</button><button data-ok>The terminal</button><button>/dev/null</button><p class="why">When <code>2&gt;&amp;1</code> is processed, fd 1 still points at the terminal, so 2 becomes a copy of that. Only afterwards is 1 moved to the file.</p></div>
+    <div class="q"><p><code>false | true; echo $?</code> prints…</p><button>1</button><button data-ok>0</button><button>1 0</button><p class="why">Without <code>pipefail</code> only the last stage counts. <code>${PIPESTATUS[@]}</code> would show <code>1 0</code>.</p></div>
+    <div class="q"><p>Why does <code>sudo echo 1 &gt; /proc/sys/net/ipv4/ip_forward</code> fail?</p><button>echo cannot write to /proc</button><button data-ok>The redirection is opened by your non-root shell before sudo runs</button><button>sudo ignores builtins</button><p class="why">Redirections are performed by the invoking shell. <code>echo 1 | sudo tee /proc/sys/net/ipv4/ip_forward</code> opens the file inside the privileged process.</p></div>
+    <div class="q"><p>In <code>cat big.log | grep ERROR | head -1</code>, what stops <code>cat</code> once <code>head</code> has its line?</p><button>Nothing: it reads the whole file</button><button data-ok>SIGPIPE, when it writes to a pipe with no reader</button><button>The shell kills it</button><p class="why">head exits, grep gets SIGPIPE on its next write and exits, then cat gets SIGPIPE in turn. The pipeline unwinds from the right.</p></div>
+  </div>
+</section>
+
+<section class="module" id="m04" data-part="The shell is a language" data-title="Speed: editing, history, config" data-min="45">
+  <h2>Moving fast: line editing, history and your dotfiles</h2>
+  <p class="lede">Advanced users are not faster typists. They retype almost nothing: the previous command, its arguments and last week's one-liner are all a keystroke away.</p>
+  <div class="goals"><h4>You will be able to</h4><ul>
+    <li>Edit a long command line without reaching for the arrow keys</li>
+    <li>Recall and reuse history with search and <code>!</code> expansion</li>
+    <li>Know which startup file to put aliases, functions and <code>PATH</code> changes in</li>
+  </ul></div>
+
+  <h3>Readline keys</h3>
+  <p>bash, and most interactive tools (python, gdb, psql, mysql), use the readline library, so these work everywhere. They are Emacs bindings; <code>set -o vi</code> switches to vi-style editing if you prefer.</p>
+  <div class="tbl"><table>
+    <tr><th>Keys</th><th>Action</th><th>Keys</th><th>Action</th></tr>
+    <tr><td><kbd>Ctrl</kbd>+<kbd>A</kbd> / <kbd>E</kbd></td><td>Start / end of line</td><td><kbd>Alt</kbd>+<kbd>B</kbd> / <kbd>F</kbd></td><td>Back / forward one word</td></tr>
+    <tr><td><kbd>Ctrl</kbd>+<kbd>U</kbd> / <kbd>K</kbd></td><td>Cut to start / end</td><td><kbd>Ctrl</kbd>+<kbd>W</kbd> / <kbd>Alt</kbd>+<kbd>D</kbd></td><td>Cut word before / after</td></tr>
+    <tr><td><kbd>Ctrl</kbd>+<kbd>Y</kbd></td><td>Paste what you cut</td><td><kbd>Ctrl</kbd>+<kbd>_</kbd></td><td>Undo</td></tr>
+    <tr><td><kbd>Ctrl</kbd>+<kbd>R</kbd></td><td>Search history backwards</td><td><kbd>Alt</kbd>+<kbd>.</kbd></td><td>Insert last argument of previous command</td></tr>
+    <tr><td><kbd>Ctrl</kbd>+<kbd>X</kbd> <kbd>Ctrl</kbd>+<kbd>E</kbd></td><td>Edit the line in <code>$EDITOR</code></td><td><kbd>Alt</kbd>+<kbd>#</kbd></td><td>Comment the line out and save it in history</td></tr>
+    <tr><td><kbd>Ctrl</kbd>+<kbd>L</kbd></td><td>Clear screen</td><td><kbd>Ctrl</kbd>+<kbd>D</kbd></td><td>End of input / exit</td></tr>
+    <tr><td><kbd>Ctrl</kbd>+<kbd>C</kbd></td><td>SIGINT to the foreground job</td><td><kbd>Ctrl</kbd>+<kbd>Z</kbd></td><td>Suspend it (SIGTSTP)</td></tr>
+  </table></div>
+  <p>Three of these pay for themselves in a day: <kbd>Ctrl</kbd>+<kbd>R</kbd>, <kbd>Alt</kbd>+<kbd>.</kbd> and <kbd>Ctrl</kbd>+<kbd>X</kbd> <kbd>Ctrl</kbd>+<kbd>E</kbd>. The last one turns any command that has grown past one line into a file in your editor, executed when you save and quit.</p>
+
+  <h3>History expansion</h3>
+  <div class="tbl"><table>
+    <tr><th>Token</th><th>Expands to</th></tr>
+    <tr><td><code>!!</code></td><td>The whole previous command: <code>sudo !!</code></td></tr>
+    <tr><td><code>!$</code></td><td>Its last argument: <code>mkdir -p a/b/c &amp;&amp; cd !$</code></td></tr>
+    <tr><td><code>!*</code></td><td>All its arguments</td></tr>
+    <tr><td><code>!grep</code></td><td>The most recent command starting with grep</td></tr>
+    <tr><td><code>^old^new</code></td><td>Previous command with the first old replaced by new</td></tr>
+    <tr><td><code>!n</code></td><td>History entry number n (see <code>history</code>)</td></tr>
+  </table></div>
+  <p>The sandbox implements <code>!!</code>, <code>!$</code> and <code>!*</code>, and prints the expanded line before running it, as bash does.</p>
+  <pre class="t live">
+$ ls -l /etc/shadow
+$ sudo !!
+$ mkdir -p /tmp/deep/dir
+$ cd !$
+$ cd -
+$ history 5
+</pre>
+  <p>Useful settings for <code>~/.bashrc</code>: <code>HISTSIZE=100000</code>, <code>HISTCONTROL=ignoreboth:erasedups</code> (skip duplicates and lines starting with a space, which is how you keep a secret out of history), <code>shopt -s histappend</code> so parallel terminals do not overwrite each other, and <code>HISTTIMEFORMAT='%F %T '</code> to timestamp entries.</p>
+
+  <h3>Aliases versus functions</h3>
+  <p>An alias is a text replacement for the first word; it cannot take arguments in the middle. As soon as you need <code>$1</code>, write a function. Functions are also what you use to wrap a command with safer defaults.</p>
+  <pre class="t live">
+$ alias gl='grep -rn --include=*.c'
+$ gl TODO src
+$ mkcd() { mkdir -p "$1" &amp;&amp; cd "$1"; }
+$ mkcd /tmp/proj/build; pwd
+$ hd() { hexdump -C "$@" | head -20; }
+$ hd fw/firmware.bin
+$ type mkcd
+$ unalias gl; unset -f hd
+</pre>
+
+  <h3>Which startup file?</h3>
+  <div class="tbl"><table>
+    <tr><th>Shell started as</th><th>Reads</th><th>Put here</th></tr>
+    <tr><td>Login shell (ssh, console, <code>bash -l</code>)</td><td><code>/etc/profile</code>, then the first of <code>~/.bash_profile</code>, <code>~/.bash_login</code>, <code>~/.profile</code></td><td>Environment: <code>PATH</code>, <code>EDITOR</code>. Usually just sources .bashrc</td></tr>
+    <tr><td>Interactive non-login (a new terminal tab)</td><td><code>~/.bashrc</code></td><td>Aliases, functions, prompt, completion, history settings</td></tr>
+    <tr><td>Non-interactive (scripts, <code>ssh host cmd</code>)</td><td>Nothing, unless <code>BASH_ENV</code> is set</td><td>Which is why aliases are missing in scripts and cron</td></tr>
+  </table></div>
+  <p>"Works in my terminal, command not found in cron/systemd/ssh" is nearly always this table: the non-interactive shell never read the file where you extended <code>PATH</code>. Use absolute paths or set <code>PATH</code> explicitly in the script or unit.</p>
+  <pre class="t live">
+$ cat ~/.bashrc
+$ cat ~/.bash_profile
+$ echo 'export PATH="$HOME/.local/bin:$PATH"' &gt;&gt; ~/.bashrc
+$ source ~/.bashrc; echo $PATH
+</pre>
+
+  <h3>Tools that multiply all of the above</h3>
+  <div class="grid2">
+    <div class="card"><h4>fzf</h4><p>Fuzzy finder. Its shell integration replaces Ctrl-R with an interactive search and adds Ctrl-T (pick a file) and Alt-C (cd anywhere).</p></div>
+    <div class="card"><h4>zoxide</h4><p><code>z proj</code> jumps to the directory you use most that matches. Replaces long <code>cd</code> paths.</p></div>
+    <div class="card"><h4>ripgrep, fd, bat</h4><p>Faster, friendlier <code>grep -r</code>, <code>find</code> and <code>cat</code>. Learn the classics first: they are what every server has.</p></div>
+    <div class="card"><h4>tldr</h4><p>Example-first summaries of man pages: <code>tldr tar</code>.</p></div>
+  </div>
+  <div class="note"><b>fish:</b> history search is built in (type a fragment, press <kbd>↑</kbd>), <kbd>Alt</kbd>+<kbd>.</kbd> works, <kbd>Alt</kbd>+<kbd>E</kbd> opens the editor, and <kbd>Alt</kbd>+<kbd>S</kbd> prepends sudo. There is no <code>!!</code>. Abbreviations (<code>abbr -a gs git status</code>) expand in place as you type, which keeps your history readable. Config lives in <code>~/.config/fish/config.fish</code> and functions in <code>~/.config/fish/functions/</code>.</div>
+
+  <div class="missions"></div>
+  <div class="quiz"><h3>Check yourself</h3>
+    <div class="q"><p>You typed a 200-character command and spotted a typo near the start. Fastest fix?</p><button>Hold the left arrow</button><button data-ok>Ctrl-A, then Alt-F to hop words (or Ctrl-X Ctrl-E to open it in your editor)</button><button>Ctrl-C and retype</button><p class="why">Jump to the start and move by words. For anything multi-line, editing in <code>$EDITOR</code> is better still.</p></div>
+    <div class="q"><p>Your alias works in the terminal but a cron job using it fails. Why?</p><button>cron runs as root</button><button data-ok>Non-interactive shells do not read ~/.bashrc and do not expand aliases</button><button>Aliases expire</button><p class="why">Scripts and cron get a bare environment. Use full commands, functions defined in the script, or absolute paths.</p></div>
+    <div class="q"><p>How do you run one command without it being saved to history (with <code>HISTCONTROL=ignoreboth</code>)?</p><button>Append #nohist</button><button data-ok>Start the line with a space</button><button>Run it with sudo</button><p class="why"><code>ignorespace</code>, included in <code>ignoreboth</code>, skips lines with a leading space. Handy for commands that include a token.</p></div>
+  </div>
+</section>

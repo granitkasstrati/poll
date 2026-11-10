@@ -1,0 +1,345 @@
+<section class="module" id="m05" data-part="Text as data" data-title="grep and regular expressions" data-min="60">
+  <h2>grep and regular expressions</h2>
+  <p class="lede">Logs, configs, source code, serial captures: it is all text, and a regular expression is how you describe the lines you care about. Learn one dialect properly and the rest are footnotes.</p>
+  <div class="goals"><h4>You will be able to</h4><ul>
+    <li>Write extended regular expressions with anchors, classes, quantifiers, groups and back-references</li>
+    <li>Drive grep's options: count, invert, only-matching, context, recursive, fixed strings</li>
+    <li>Know the differences between BRE, ERE and PCRE, and between a regex and a glob</li>
+  </ul></div>
+
+  <h3>The building blocks</h3>
+  <div class="tbl"><table>
+    <tr><th>Piece</th><th>Matches</th><th>Piece</th><th>Matches</th></tr>
+    <tr><td><code>.</code></td><td>Any one character</td><td><code>^</code> / <code>$</code></td><td>Start / end of line (zero width)</td></tr>
+    <tr><td><code>[abc]</code> <code>[a-f0-9]</code></td><td>One character from the set</td><td><code>[^abc]</code></td><td>One character NOT in the set</td></tr>
+    <tr><td><code>*</code></td><td>Previous item, 0 or more times</td><td><code>+</code> / <code>?</code></td><td>1 or more / 0 or 1</td></tr>
+    <tr><td><code>{n}</code> <code>{n,m}</code> <code>{n,}</code></td><td>Exactly n / n to m / at least n</td><td><code>a|b</code></td><td>Either alternative</td></tr>
+    <tr><td><code>( )</code></td><td>Group, and capture for <code>\1</code></td><td><code>\b</code> or <code>\&lt; \&gt;</code></td><td>Word boundary</td></tr>
+    <tr><td><code>[[:digit:]]</code> <code>[[:space:]]</code></td><td>POSIX classes, used inside brackets</td><td><code>\.</code> <code>\[</code> <code>\$</code></td><td>The literal character</td></tr>
+  </table></div>
+  <p>Quantifiers are <b>greedy</b>: <code>".*"</code> on <code>a "b" c "d"</code> matches from the first quote to the last. The portable fix is a negated class, <code>"[^"]*"</code>, which cannot run past the closing quote. A regex <code>*</code> is not a glob <code>*</code>: in a regex, "anything" is <code>.*</code>.</p>
+  <div class="widget" data-widget="regex"></div>
+  <p>Experiments for the lab: <code>^[A-Z][a-z]{2} +[0-9]+</code>, <code>([0-9a-f]{2}:){5}[0-9a-f]{2}</code>, <code>[0-9]+\.[0-9]+V</code>, <code>\b[0-9]{4,}\b</code>, <code>(Failed|Accepted) [a-z]+</code>.</p>
+
+  <h3>Three dialects</h3>
+  <div class="tbl"><table>
+    <tr><th>Dialect</th><th>Used by</th><th>Notes</th></tr>
+    <tr><td>BRE (basic)</td><td><code>grep</code>, <code>sed</code> by default</td><td><code>+ ? | ( ) { }</code> are literal unless backslashed: <code>\(ab\)\+</code></td></tr>
+    <tr><td>ERE (extended)</td><td><code>grep -E</code>, <code>sed -E</code>, <code>awk</code>, bash <code>=~</code></td><td>The sane default. Use it always</td></tr>
+    <tr><td>PCRE (Perl)</td><td><code>grep -P</code>, ripgrep, Python, most languages</td><td>Adds <code>\d \w \s</code>, lazy <code>*?</code>, lookaround <code>(?=...)</code> <code>(?&lt;!...)</code></td></tr>
+  </table></div>
+  <p>Always single-quote the pattern so the shell passes it through untouched.</p>
+
+  <h3>grep in practice</h3>
+  <pre class="t live">
+$ grep ERROR logs/app.log
+$ grep -c ERROR logs/app.log  # count matching lines
+$ grep -n 'crc' logs/app.log  # with line numbers
+$ grep -i 'warn' logs/app.log | head -3
+$ grep -v INFO logs/app.log | grep -vc DEBUG  # invert
+$ grep -E 'ERROR|WARN' logs/app.log | grep -c mqtt
+$ grep -oE 'rssi -[0-9]+' logs/app.log | sort -u  # only the matching part
+$ grep -w 'ok' logs/app.log  # whole word: skips "broker"
+$ grep -rn 'baud' src conf  # recursive
+$ grep -rl 'TODO' src  # just the file names
+$ grep -A2 'bad sha256' logs/app.log | head -6  # 2 lines of context after
+$ grep -F '[ERROR]' logs/app.log | wc -l  # fixed string: no regex at all
+$ grep -q 'node-d' data/sensors.csv &amp;&amp; echo present  # quiet: just the exit status
+</pre>
+  <div class="tbl"><table>
+    <tr><th>Flag</th><th>Meaning</th><th>Flag</th><th>Meaning</th></tr>
+    <tr><td><code>-E</code> / <code>-F</code> / <code>-P</code></td><td>Extended / fixed string / Perl</td><td><code>-i</code></td><td>Ignore case</td></tr>
+    <tr><td><code>-v</code></td><td>Lines that do NOT match</td><td><code>-c</code></td><td>Count matching lines</td></tr>
+    <tr><td><code>-o</code></td><td>Print each match on its own line</td><td><code>-n</code></td><td>Prefix line numbers</td></tr>
+    <tr><td><code>-r</code> / <code>--include='*.c'</code></td><td>Recurse / only these files</td><td><code>-l</code> / <code>-L</code></td><td>Files with / without a match</td></tr>
+    <tr><td><code>-A n</code> <code>-B n</code> <code>-C n</code></td><td>Context after / before / both</td><td><code>-w</code> / <code>-x</code></td><td>Whole word / whole line</td></tr>
+    <tr><td><code>-q</code></td><td>No output; exit 0 on first match</td><td><code>-m n</code></td><td>Stop after n matches</td></tr>
+  </table></div>
+
+  <h3>Patterns you will actually reuse</h3>
+  <pre class="t live">
+$ grep -oE '([0-9]{1,3}\.){3}[0-9]{1,3}' logs/access.log | sort -u  # IPv4-shaped
+$ grep -Ev '^\s*(#|$)' conf/sshd_config  # strip comments and blanks
+$ grep -E '" (4|5)[0-9]{2} ' logs/access.log | wc -l  # HTTP 4xx and 5xx
+$ grep -E '^[^,]*,node-[bd],' data/sensors.csv | head -3  # anchored to a CSV column
+$ grep -E '(.)\1' /usr/share/dict/words | head -5  # back-reference: doubled letter
+$ grep -cE '^(.).*\1$' /usr/share/dict/words  # starts and ends with the same letter
+</pre>
+  <div class="note"><b>ripgrep</b> (<code>rg</code>) is grep with recursion, <code>.gitignore</code> awareness and Rust-regex syntax by default. <code>rg -n TODO</code> equals <code>grep -rn TODO .</code> minus build junk. Use it locally; keep grep fluent for every other machine.</div>
+
+  <div class="missions"></div>
+  <div class="quiz"><h3>Check yourself</h3>
+    <div class="q"><p>Which pattern matches a line that consists only of digits?</p><button>[0-9]*</button><button data-ok>^[0-9]+$</button><button>\d</button><p class="why">Without anchors a pattern matches anywhere in the line, and <code>[0-9]*</code> even matches the empty string, so it matches every line.</p></div>
+    <div class="q"><p><code>grep 'a+b' file</code> (no -E) looks for…</p><button>one or more a, then b</button><button data-ok>the literal text a+b</button><button>a or b</button><p class="why">In basic regex <code>+</code> is an ordinary character. Use <code>-E</code>, or <code>a\+b</code> in GNU grep.</p></div>
+    <div class="q"><p>You want only the MAC addresses from a log, one per line. Which flag is essential?</p><button>-c</button><button>-l</button><button data-ok>-o</button><p class="why"><code>-o</code> prints each match instead of the whole line. Pair it with <code>-E</code> and <code>sort -u</code>.</p></div>
+    <div class="q"><p>In a script: <code>if grep -q "$user" /etc/passwd; then</code>. What is wrong?</p><button>Nothing</button><button data-ok>It matches substrings anywhere: user "op" also matches "nobody: Kernel Overflow User" style text or "operator"</button><button>-q suppresses the exit status</button><p class="why">Anchor to the field: <code>grep -q "^$user:" /etc/passwd</code>, or use <code>getent passwd "$user"</code> or <code>id "$user"</code>.</p></div>
+  </div>
+</section>
+
+<section class="module" id="m06" data-part="Text as data" data-title="sed: editing streams" data-min="50">
+  <h2>sed: edit text without opening it</h2>
+  <p class="lede">sed applies a small program to each line of its input. Ninety percent of real use is substitution and line selection, and those two cover config edits, log slicing and bulk refactors.</p>
+  <div class="goals"><h4>You will be able to</h4><ul>
+    <li>Substitute with capture groups, alternative delimiters and flags</li>
+    <li>Select lines by number, pattern and range, and print, delete or change them</li>
+    <li>Edit files in place safely</li>
+  </ul></div>
+
+  <h3>The model</h3>
+  <p>For each input line: read it into the <b>pattern space</b>, run every command whose <b>address</b> matches, then print the pattern space (unless <code>-n</code>). A command looks like <code>[address]command</code>.</p>
+  <div class="tbl"><table>
+    <tr><th>Address</th><th>Selects</th><th>Command</th><th>Does</th></tr>
+    <tr><td><code>5</code></td><td>Line 5</td><td><code>s/re/rep/flags</code></td><td>Substitute</td></tr>
+    <tr><td><code>$</code></td><td>The last line</td><td><code>p</code></td><td>Print (use with <code>-n</code>)</td></tr>
+    <tr><td><code>/re/</code></td><td>Lines matching re</td><td><code>d</code></td><td>Delete the line</td></tr>
+    <tr><td><code>3,7</code> &nbsp; <code>/a/,/b/</code></td><td>Inclusive ranges</td><td><code>q</code></td><td>Quit (after printing)</td></tr>
+    <tr><td><code>addr!</code></td><td>Everything except</td><td><code>a text</code> / <code>i text</code> / <code>c text</code></td><td>Append / insert / replace line</td></tr>
+    <tr><td><code>0~3</code> (GNU)</td><td>Every 3rd line</td><td><code>y/abc/xyz/</code></td><td>Translate characters</td></tr>
+  </table></div>
+
+  <h3>Substitution</h3>
+  <pre class="t live">
+$ echo 'baud=9600 baud=9600' | sed 's/9600/115200/'  # first match per line
+$ echo 'baud=9600 baud=9600' | sed 's/9600/115200/g'  # every match
+$ echo 'baud=9600 baud=9600' | sed 's/9600/115200/2'  # only the second
+$ echo '/usr/local/bin' | sed 's|/usr/local|/opt|'  # any delimiter: no leaning toothpicks
+$ echo 'Error error ERROR' | sed 's/error/E/gI'  # case-insensitive
+$ echo 'port 8080' | sed -E 's/[0-9]+/[&amp;]/'  # &amp; is the whole match
+$ echo '2026-11-10' | sed -E 's/([0-9]+)-([0-9]+)-([0-9]+)/\3.\2.\1/'  # reorder with groups
+$ sed -E 's/^([^,]*),([^,]*),.*/\2 -&gt; \1/' data/parts.csv | head -4
+</pre>
+  <p>Use <code>-E</code> so groups are plain <code>( )</code>. In the replacement, <code>&amp;</code> is the entire match and <code>\1</code>…<code>\9</code> are the groups. The <code>p</code> flag prints lines where a substitution happened, which with <code>-n</code> gives you "grep and transform" in one step:</p>
+  <pre class="t live">
+$ sed -nE 's/.*rssi (-[0-9]+).*/\1/p' logs/app.log | sort -n | head -3
+$ sed -nE 's/^interval=(.*)/\1/p' /etc/sensor-logger.conf  # read one config value
+</pre>
+
+  <h3>Selecting lines</h3>
+  <pre class="t live">
+$ sed -n '3p' data/parts.csv  # just line 3
+$ sed -n '2,4p' data/parts.csv
+$ sed -n '$p' data/parts.csv  # last line
+$ sed '1d' data/parts.csv | head -3  # drop the header
+$ sed -n '/BEGIN/,/END/p' conf/device.pem  # between two markers
+$ sed '/^#/d; /^$/d' conf/serial.conf  # two commands, separated by ;
+$ sed -n '/ERROR/{s/^[^ ]* //;p}' logs/app.log | head -3  # a block on matching lines
+$ sed '3q' logs/access.log | cut -c1-50  # like head -3, and stops reading
+$ sed -n '/node-d/=' data/sensors.csv | head -3  # print line numbers of matches
+</pre>
+
+  <h3>Editing files in place</h3>
+  <p><code>-i</code> rewrites the file. Always look at the result without <code>-i</code> first, and keep a backup with a suffix until you trust the expression: <code>sed -i.bak '...' file</code>.</p>
+  <pre class="t live">
+$ cat conf/serial.conf
+$ sed 's/^parity=none/parity=even/' conf/serial.conf  # preview on stdout
+$ sed -i.bak 's/^parity=none/parity=even/' conf/serial.conf
+$ diff conf/serial.conf.bak conf/serial.conf
+$ sed -i '/^stopbits/a flow=none' conf/serial.conf; tail -3 conf/serial.conf  # append after a match
+$ sed -i -E 's/^#?(PermitRootLogin).*/\1 no/' conf/sshd_config; grep PermitRoot conf/sshd_config
+</pre>
+  <p>That last form is the standard way to set a config key whether or not it is currently commented out: optional <code>#</code>, capture the key, replace the whole line.</p>
+  <div class="warn"><b>Anchor your patterns.</b> <code>s/9600/115200/</code> will also rewrite a comment, a port number or a timestamp that happens to contain 9600. <code>s/^baud=9600$/baud=115200/</code> changes exactly one thing. macOS/BSD sed differs: <code>-i ''</code> needs an explicit empty suffix and several GNU extensions are missing.</div>
+
+  <h3>When to stop using sed</h3>
+  <p>sed works line by line and has no notion of fields or numbers. If you find yourself reaching for the hold space (<code>h</code>, <code>G</code>, <code>x</code>) or counting columns, switch to awk. If the data is JSON or YAML, use <code>jq</code> or <code>yq</code>: regexes cannot parse nested structures.</p>
+
+  <div class="missions"></div>
+  <div class="quiz"><h3>Check yourself</h3>
+    <div class="q"><p>What does <code>sed -n '/start/,/stop/p' f</code> print?</p><button>Lines containing both words</button><button data-ok>Every line from one matching start through the next line matching stop, inclusive</button><button>Only the start and stop lines</button><p class="why">A two-address range. If "stop" never appears, it runs to the end of the file. It can match several blocks.</p></div>
+    <div class="q"><p>Why write <code>s|/var/www|/srv/http|</code> instead of using slashes?</p><button>It is faster</button><button data-ok>Any character can delimit; choosing one not in the text avoids escaping every /</button><button>Pipes enable extended regex</button><p class="why">The character after <code>s</code> becomes the delimiter. <code>s#a#b#</code> and <code>s,a,b,</code> work too.</p></div>
+    <div class="q"><p><code>sed 's/a/b/' file &gt; file</code> leaves the file…</p><button>edited</button><button data-ok>empty</button><button>unchanged</button><p class="why">The shell truncates the output file before sed reads it. Use <code>-i</code>, which writes a temp file and renames it.</p></div>
+  </div>
+</section>
+
+<section class="module" id="m07" data-part="Text as data" data-title="awk: fields and reports" data-min="65">
+  <h2>awk: a programming language for columns</h2>
+  <p class="lede">awk reads records, splits them into fields, and runs your pattern-action rules. It has variables, arithmetic, associative arrays and printf. For tabular text it replaces most small Python scripts.</p>
+  <div class="goals"><h4>You will be able to</h4><ul>
+    <li>Select and reformat fields with any separator</li>
+    <li>Filter rows with numeric and regex conditions</li>
+    <li>Aggregate with associative arrays: counts, sums, averages, min and max per key</li>
+  </ul></div>
+
+  <h3>The program shape</h3>
+  <pre class="t">
+awk 'BEGIN { setup }  pattern { action }  pattern { action }  END { summary }' file
+</pre>
+  <p>For every input line awk sets <code>$0</code> (the line), <code>$1</code>…<code>$NF</code> (the fields), <code>NF</code> (field count) and <code>NR</code> (line number), then runs each rule whose pattern is true. A rule with no action prints the line; a rule with no pattern runs on every line.</p>
+  <pre class="t live">
+$ awk '{print $1}' logs/access.log | head -3  # first whitespace-separated field
+$ awk '{print $1, $9, $NF}' logs/access.log | head -3  # comma = output separator (space)
+$ awk -F, '{print $2}' data/parts.csv | head -4  # -F sets the input separator
+$ awk -F: '$3 &gt;= 1000 {print $1, $7}' /etc/passwd  # numeric condition
+$ awk -F, 'NR &gt; 1 &amp;&amp; $4 &gt;= 4' data/parts.csv  # pattern only: print the line
+$ awk '/ERROR/ {n++} END {print n, "errors"}' logs/app.log
+$ awk 'NR == 5, NR == 7' logs/app.log  # a range of records
+$ awk 'END {print NR}' logs/access.log  # wc -l
+$ awk '{print NF}' logs/app.log | sort -n | uniq -c  # how many fields per line?
+</pre>
+  <p>Always wrap the program in single quotes: awk's <code>$1</code> must reach awk, not be expanded by the shell. To pass a shell value in, use <code>-v name="$value"</code>.</p>
+
+  <h3>Conditions and regexes</h3>
+  <pre class="t live">
+$ awk '$9 == 404' logs/access.log | wc -l
+$ awk '$9 &gt;= 400 {print $9, $7}' logs/access.log | sort | uniq -c | sort -rn | head -4
+$ awk '$7 ~ /^\/api\//' logs/access.log | wc -l  # field matches regex
+$ awk '$1 !~ /^192\.168\./ {print $1}' logs/access.log | sort -u  # does not match
+$ awk -F, -v limit=3.3 'NR &gt; 1 &amp;&amp; $5 &lt; limit {print $2, $5}' data/sensors.csv | head -4
+$ awk -F'[][]' '{print $2}' logs/access.log | head -2  # a regex as separator: text inside [ ]
+</pre>
+
+  <h3>printf and built-in functions</h3>
+  <pre class="t live">
+$ awk -F, 'NR &gt; 1 {printf "%-4s %-18s %3d x %6.3f = %7.2f\n", $1, $2, $4, $5, $4*$5}' data/parts.csv
+$ awk -F, 'NR &gt; 1 {print toupper($2), length($2)}' data/parts.csv | head -3
+$ awk '{print substr($4, 2, 11), substr($4, 14, 5)}' logs/access.log | head -2  # date and time
+$ awk '{split($4, t, ":"); print t[2]}' logs/access.log | sort | uniq -c  # requests per hour
+$ awk '{gsub(/[0-9]+/, "N"); print}' logs/app.log | cut -c1-60 | head -3
+$ awk 'BEGIN {printf "%.4f V per LSB\n", 3.3 / 4096; print 2^10, 17 % 5, int(7/2)}'
+</pre>
+  <div class="hw"><b>On the bench:</b> a <code>BEGIN</code>-only program is a floating-point calculator that reads no input: ADC scaling, RC time constants (<code>awk 'BEGIN{print 10e3*100e-9}'</code>), baud-rate divisor error. <code>printf "%x"</code> and <code>strtonum("0x1F")</code> (gawk) cover hex.</div>
+
+  <h3>Associative arrays: the reason to learn awk</h3>
+  <p>An array indexed by strings turns "group by" into one line. Accumulate while reading, report in <code>END</code>.</p>
+  <pre class="t live">
+$ awk '{c[$1]++} END {for (ip in c) print c[ip], ip}' logs/access.log | sort -rn | head -4
+$ awk '{b[$9] += $10} END {for (s in b) print s, b[s]}' logs/access.log | sort
+$ awk -F, 'NR &gt; 1 {s[$2] += $3; n[$2]++} END {for (k in s) printf "%s %.2f\n", k, s[k]/n[k]}' data/sensors.csv | sort
+$ awk -F, 'NR &gt; 1 &amp;&amp; (!($2 in lo) || $5 &lt; lo[$2]) {lo[$2] = $5} END {for (k in lo) print k, lo[k]}' data/sensors.csv | sort
+$ awk '!seen[$1]++ {print $1}' logs/access.log | head -5  # unique, keeping first-seen order
+$ awk -F'[][ ]+' '{c[$3]++} END {for (l in c) print l, c[l]}' logs/app.log | sort  # lines per log level
+</pre>
+  <p><code>!seen[$1]++</code> deserves a second look: the first time a key appears its count is 0 (false), <code>!</code> makes it true so the line prints, and <code>++</code> ensures every later occurrence is false. It is <code>sort -u</code> without sorting. The iteration order of <code>for (k in arr)</code> is unspecified, so pipe to <code>sort</code> when order matters.</p>
+
+  <h3>Useful variables</h3>
+  <div class="tbl"><table>
+    <tr><th>Variable</th><th>Meaning</th><th>Variable</th><th>Meaning</th></tr>
+    <tr><td><code>NR</code> / <code>FNR</code></td><td>Record number overall / in the current file</td><td><code>NF</code></td><td>Number of fields; <code>$NF</code> is the last one</td></tr>
+    <tr><td><code>FS</code> / <code>OFS</code></td><td>Input / output field separator</td><td><code>RS</code> / <code>ORS</code></td><td>Record separators</td></tr>
+    <tr><td><code>FILENAME</code></td><td>Current input file</td><td><code>$(NF-1)</code></td><td>Fields can be computed</td></tr>
+  </table></div>
+  <pre class="t live">
+$ awk 'BEGIN {FS = ","; OFS = "\t"} NR &gt; 1 {print $1, $4, $5}' data/parts.csv | head -3  # CSV to TSV
+$ awk 'NR == FNR {ok[$1]; next} FNR &gt; 1 &amp;&amp; !($2 in ok)' data/calibrated.txt FS=, data/sensors.csv | cut -d, -f2 | sort -u
+</pre>
+  <p>The second line is the classic two-file idiom: while <code>NR == FNR</code> awk is still in the first file, so it loads a lookup table and skips to the <code>next</code> record; afterwards it filters the second file against that table. It is a join without sorting.</p>
+  <div class="note"><b>Real CSV</b> has quoted fields with embedded commas. <code>-F,</code> is fine for data you control; for anything else use <code>gawk --csv</code> (5.3+), <code>mlr</code> (Miller) or <code>xsv</code>.</div>
+
+  <div class="missions"></div>
+  <div class="quiz"><h3>Check yourself</h3>
+    <div class="q"><p>What does <code>awk '$3 &gt; 100' file</code> do?</p><button>Prints field 3 when it exceeds 100</button><button data-ok>Prints whole lines whose third field exceeds 100</button><button>Nothing: there is no action</button><p class="why">A pattern without an action defaults to <code>{print $0}</code>.</p></div>
+    <div class="q"><p>Why does <code>awk "{print $1}" file</code> print whole lines?</p><button>Double quotes disable field splitting</button><button data-ok>The shell expanded $1 (to nothing) before awk saw the program, leaving {print }</button><button>awk needs -F</button><p class="why">In double quotes the shell substitutes its own <code>$1</code>. Single-quote awk programs.</p></div>
+    <div class="q"><p>Which prints the sum of column 2?</p><button>awk '{print sum($2)}'</button><button data-ok>awk '{s += $2} END {print s}'</button><button>awk 'END {print $2}'</button><p class="why">Accumulate per line; report once in END. Uninitialised variables start as 0 or the empty string.</p></div>
+    <div class="q"><p>In <code>awk 'NR==FNR {a[$1]; next} $1 in a' A B</code>, which lines are printed?</p><button>Lines of A whose first field is in B</button><button data-ok>Lines of B whose first field appears in A</button><button>Lines common to both files</button><p class="why">The first rule only runs for A (where NR equals FNR), stores the keys, and skips the second rule. The second rule then filters B.</p></div>
+  </div>
+</section>
+
+<section class="module" id="m08" data-part="Text as data" data-title="The pipeline toolkit" data-min="65">
+  <h2>The pipeline toolkit: sort, uniq, cut, tr, find, xargs, jq</h2>
+  <p class="lede">A dozen small filters, each trivial alone. The skill is composition: seeing a question as a sequence of extract, normalise, sort, count, rank.</p>
+  <div class="goals"><h4>You will be able to</h4><ul>
+    <li>Build frequency tables and top-N reports from any log</li>
+    <li>Compare and join sorted lists with <code>comm</code> and <code>join</code></li>
+    <li>Find files by any property and act on them safely with <code>-exec</code> and <code>xargs</code></li>
+  </ul></div>
+
+  <h3>The frequency-table idiom</h3>
+  <pre class="t live">
+$ cut -d' ' -f1 logs/access.log | sort | uniq -c | sort -rn | head -5
+$ awk '{print $9}' logs/access.log | sort | uniq -c | sort -rn
+$ grep -oE '\[(ERROR|WARN)\] [a-z]+' logs/app.log | sort | uniq -c | sort -rn
+</pre>
+  <p>Extract the key, <code>sort</code> so equal keys are adjacent, <code>uniq -c</code> to count runs, <code>sort -rn</code> to rank. <code>uniq</code> only collapses <b>adjacent</b> duplicates, which is why the first sort is not optional.</p>
+
+  <h3>sort</h3>
+  <pre class="t live">
+$ sort -t, -k4,4nr data/parts.csv | head -4  # by column 4, numeric, descending
+$ sort -t, -k3,3 -k5,5n data/parts.csv | head -5  # by package, then price
+$ du -sh ~/work/* | sort -h  # human sizes: 4.0K &lt; 1.2M &lt; 3G
+$ sort -u data/calibrated.txt  # sorted and de-duplicated
+$ sort -t: -k3,3n /etc/passwd | cut -d: -f1,3 | tail -4
+$ printf 'v1.10\nv1.9\nv1.2\n' | sort -V  # version order
+</pre>
+  <p><code>-k4,4</code> means "from field 4 to field 4". A bare <code>-k4</code> means "from field 4 to the end of the line", which is rarely what you want. Suffix letters (<code>n</code>, <code>r</code>, <code>h</code>, <code>V</code>) apply to that key only.</p>
+
+  <h3>cut, paste, tr, column</h3>
+  <pre class="t live">
+$ cut -d: -f1,7 /etc/passwd | head -3  # fields
+$ cut -c1-19 logs/app.log | head -2  # character columns
+$ cut -d, -f2- data/parts.csv | head -2  # field 2 to the end
+$ head -1 data/sensors.csv | tr ',' '\n'  # one header per line
+$ tr -d '\r' &lt; fw/boot-capture.log 2&gt;/dev/null | head -1  # strip CRs from a serial capture
+$ echo 'a    b   c' | tr -s ' '  # squeeze repeats
+$ echo 'Hello World' | tr 'A-Za-z' 'N-ZA-Mn-za-m'  # rot13
+$ cut -d, -f2 data/sensors.csv | sort -u | paste -sd,  # join lines with commas
+$ column -t -s, data/parts.csv | head -5  # align as a table
+</pre>
+  <p><code>cut</code> splits on exactly one delimiter character and cannot handle runs of spaces; for whitespace-aligned output (<code>ps</code>, <code>ls -l</code>, <code>df</code>) use <code>awk '{print $N}'</code> or squeeze first with <code>tr -s ' '</code>.</p>
+  <div class="hw"><b>On the bench:</b> Windows tools and most UART firmware emit <code>\r\n</code>. A stray <code>\r</code> makes <code>grep 'ok$'</code> miss, makes values compare unequal, and makes the terminal print over itself. Diagnose with <code>cat -A</code> (shows <code>^M$</code>) or <code>file</code> ("with CRLF line terminators"); fix with <code>tr -d '\r'</code> or <code>dos2unix</code>.</div>
+
+  <h3>Comparing lists: comm and join</h3>
+  <pre class="t live">
+$ cut -d, -f2 data/sensors.csv | sed 1d | sort -u &gt; /tmp/seen.txt
+$ comm /tmp/seen.txt data/calibrated.txt  # 3 columns: only-left, only-right, both
+$ comm -23 /tmp/seen.txt data/calibrated.txt  # only in the first
+$ comm -12 /tmp/seen.txt data/calibrated.txt  # in both
+$ join -t, -1 1 -2 1 &lt;(sort data/parts.csv) &lt;(printf 'C1,in stock\nU1,ordered\n')
+</pre>
+  <p>Both need sorted input. <code>comm -23 A B</code> is set difference, <code>comm -12</code> is intersection, and <code>sort -u A B</code> is union.</p>
+
+  <h3>find</h3>
+  <p><code>find START tests... action</code> walks a tree and evaluates the expression for every entry. Tests are ANDed; <code>-o</code> is OR, <code>!</code> negates, and escaped parentheses group.</p>
+  <pre class="t live">
+$ find src -name '*.c'  # quote the pattern or the shell expands it first
+$ find src -type f -name '*.[ch]' | wc -l
+$ find ~/work -type d -maxdepth 1
+$ find ~/work -type f -size +2k
+$ find ~/work -type f -newer conf/device.pem | head -5
+$ find /usr/bin -perm -4000  # setuid programs
+$ find ~/work -type f ! -name '*.c' ! -name '*.h' -path '*src*'
+$ find ~/work \( -name '*.tmp' -o -name '*.bak' \)
+$ find ~/work -type f -empty
+$ find ~/work -name '*.log' -exec wc -l {} +  # one wc for all files
+$ find src -name '*.c' -exec grep -l TODO {} \;  # one grep per file
+</pre>
+  <div class="tbl"><table>
+    <tr><th>Test</th><th>Matches</th><th>Test</th><th>Matches</th></tr>
+    <tr><td><code>-name</code> / <code>-iname</code> / <code>-path</code></td><td>Glob on the base name / case-insensitive / whole path</td><td><code>-type f|d|l</code></td><td>Files, directories, symlinks</td></tr>
+    <tr><td><code>-size +10M</code> / <code>-size -1k</code></td><td>Larger / smaller than</td><td><code>-mtime -7</code> / <code>-mmin +30</code></td><td>Modified under 7 days / over 30 minutes ago</td></tr>
+    <tr><td><code>-user U</code> / <code>-perm -MODE</code></td><td>Owner / has all these bits</td><td><code>-newer FILE</code></td><td>Modified after FILE</td></tr>
+    <tr><td><code>-maxdepth N</code></td><td>Limit recursion (put it first)</td><td><code>-delete</code></td><td>Remove matches. Test with <code>-print</code> first</td></tr>
+  </table></div>
+
+  <h3>xargs</h3>
+  <p><code>xargs</code> turns lines of input into arguments for a command. By default it splits on any whitespace, so it breaks on file names with spaces unless you use the NUL-separated pair <code>find -print0 | xargs -0</code>.</p>
+  <pre class="t live">
+$ find src -name '*.c' | xargs wc -l | tail -1
+$ find ~/work -name '*.jpeg' | xargs ls -l  # breaks on "board top.jpeg"
+$ find ~/work -name '*.jpeg' -print0 | xargs -0 ls -l  # correct
+$ cut -d, -f2 data/sensors.csv | sed 1d | sort -u | xargs -I{} echo "calibrating {}..."
+$ seq 1 6 | xargs -n 2 echo pair:
+$ printf 'node-a\nnode-b\n' | xargs -I% grep -c % data/sensors.csv
+</pre>
+  <p><code>-I{}</code> runs the command once per input line with the placeholder substituted; <code>-n N</code> caps the arguments per invocation; <code>-P 4</code> runs four in parallel; <code>-r</code> skips the run when there is no input.</p>
+
+  <h3>jq for JSON</h3>
+  <p>Do not grep JSON. <code>jq</code> is to JSON what awk is to columns.</p>
+  <pre class="t live">
+$ curl -s localhost:8080/api/nodes | jq .
+$ curl -s localhost:8080/api/nodes | jq '.[0].id'
+$ curl -s localhost:8080/api/nodes | jq -r '.[].id'  # -r: raw strings, no quotes
+$ curl -s localhost:8080/api/nodes | jq -r '.[] | select(.vbat &lt; 3.3) | .id'
+$ curl -s localhost:8080/api/nodes | jq 'length'
+$ curl -s localhost:8080/health | jq -r .version
+$ ip -j addr | jq -r '.[] | select(.operstate == "UP") | .ifname'
+</pre>
+  <p>Many modern tools emit JSON on request (<code>ip -j</code>, <code>lsblk -J</code>, <code>journalctl -o json</code>, <code>systemctl --output=json</code>), which is far more robust to parse than their human-readable tables.</p>
+
+  <div class="missions"></div>
+  <div class="quiz"><h3>Check yourself</h3>
+    <div class="q"><p><code>uniq -c</code> on unsorted input gives…</p><button>Correct totals per value</button><button data-ok>Counts of adjacent runs, so the same value can appear several times</button><button>An error</button><p class="why">uniq compares each line only with the previous one. Sort first.</p></div>
+    <div class="q"><p>Why <code>find . -name '*.c'</code> with quotes?</p><button>find requires quoted arguments</button><button data-ok>Otherwise the shell expands *.c against the current directory before find runs</button><button>Quotes make it recursive</button><p class="why">If the current directory contains <code>a.c</code> and <code>b.c</code>, find would receive <code>-name a.c b.c</code> and fail or search for the wrong thing.</p></div>
+    <div class="q"><p>Difference between <code>-exec cmd {} \;</code> and <code>-exec cmd {} +</code>?</p><button>None</button><button data-ok>\; runs cmd once per file; + passes many files to one cmd</button><button>+ runs in parallel</button><p class="why"><code>+</code> behaves like xargs and is much faster when the command accepts multiple files.</p></div>
+    <div class="q"><p>Which sorts <code>du -sh</code> output correctly?</p><button>sort -n</button><button data-ok>sort -h</button><button>sort -k2</button><p class="why"><code>-n</code> would rank 900K above 2G. <code>-h</code> understands the unit suffixes.</p></div>
+  </div>
+</section>
